@@ -28,6 +28,10 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  getAiStatus: () => request('/ai/status'),
+  startAiSimulation: (payload) => request('/ai/simulations', { method: 'POST', body: JSON.stringify(payload) }),
+  getAiSimulation: (sessionId, userId) => request(`/ai/simulations/${sessionId}?userId=${encodeURIComponent(userId)}`),
+  submitAiSimulationTurn: (sessionId, payload) => request(`/ai/simulations/${sessionId}/turns`, { method: 'POST', body: JSON.stringify(payload) }),
   getUsers: () => request('/users'),
   login: (userId) => request('/login', { method: 'POST', body: JSON.stringify({ userId }) }),
   getUser: (userId) => request(`/users/${userId}`),

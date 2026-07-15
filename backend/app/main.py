@@ -11,19 +11,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .ai import (
+    OllamaError,
+    generate_json,
+    get_policy_guidance,
+    ollama_status,
+)
 from .db import (
+    create_ai_simulation_session,
+    create_ai_simulation_turn,
     create_active_attempt,
     delete_active_attempt,
+    get_ai_simulation_session,
     get_active_attempt,
     get_settings,
     get_user,
     init_db,
+    list_ai_simulation_turns,
     list_attempts,
     list_users,
     now_iso,
     performance_label,
     record_completed_attempt,
     reset_demo_data,
+    update_ai_simulation_session,
     update_active_attempt,
     update_settings,
 )
@@ -95,6 +106,19 @@ class SettingsUpdateRequest(BaseModel):
     dailyReminder: bool
     weeklyRecap: bool
     focusMode: bool
+
+
+class AiSimulationStartRequest(BaseModel):
+    userId: str
+    topicId: str
+    difficulty: str = "standard"
+    sessionType: str = "simulation"
+
+
+class AiSimulationTurnRequest(BaseModel):
+    userId: str
+    learnerResponse: str
+    closeSession: bool = False
 
 
 @app.on_event("startup")
@@ -212,6 +236,225 @@ def chart_history(attempts: list[dict]) -> list[dict]:
             }
         )
     return history
+
+
+def normalize_difficulty(value: str) -> str:
+    allowed = {"starter", "standard", "challenging"}
+    return value if value in allowed else "standard"
+
+
+def learner_topic_snapshot(user_id: str, topic_id: str) -> dict:
+    attempts = list_attempts(user_id)
+    topic_attempts = [attempt for attempt in attempts if topic_id in attempt["topicScores"]][:4]
+    average_score = clamp_score(mean([attempt["topicScores"][topic_id] for attempt in topic_attempts])) if topic_attempts else 0
+    return {
+        "recentAverageScore": average_score,
+        "recentActivities": [
+            {
+                "title": attempt["activityTitle"],
+                "score": attempt["topicScores"][topic_id],
+                "type": attempt["activityType"],
+            }
+            for attempt in topic_attempts[:3]
+        ],
+    }
+
+
+def _text_list(values: list[str], fallback: list[str]) -> list[str]:
+    cleaned = [str(value).strip() for value in values if str(value).strip()]
+    return cleaned[:4] if cleaned else fallback
+
+
+def normalize_opening_payload(topic_id: str, topic_name_value: str, payload: dict) -> dict:
+    situation = payload.get("currentSituation") or {}
+    artifact = payload.get("artifact") or {}
+    rubric = payload.get("rubric") or []
+    normalized = {
+        "title": str(payload.get("title") or f"{topic_name_value} Live Scenario"),
+        "summary": str(payload.get("summary") or "A realistic compliance situation needs your judgement."),
+        "currentSituation": {
+            "speaker": str(situation.get("speaker") or "Stakeholder"),
+            "time": str(situation.get("time") or "Now"),
+            "location": str(situation.get("location") or "Operations floor"),
+            "channel": str(situation.get("channel") or "Email"),
+            "message": str(situation.get("message") or "A time-sensitive request has arrived and needs a compliant response."),
+        },
+        "artifact": {
+            "type": str(artifact.get("type") or "email"),
+            "title": str(artifact.get("title") or f"{topic_name_value} signal"),
+            "content": str(artifact.get("content") or "No additional artifact was generated."),
+        },
+        "responsePrompt": str(payload.get("responsePrompt") or "What would you do next, and why?"),
+        "riskSignals": _text_list(payload.get("riskSignals") or [], ["Urgency", "Ambiguity", "Potential control bypass"]),
+        "learningObjectives": _text_list(payload.get("learningObjectives") or [], [f"Apply {topic_name_value} principles", "Escalate appropriately"]),
+        "rubric": [
+            {
+                "name": str(item.get("name") or "Compliance judgement"),
+                "weight": int(item.get("weight") or 25),
+            }
+            for item in rubric[:4]
+        ]
+        or [
+            {"name": "Risk identification", "weight": 30},
+            {"name": "Control discipline", "weight": 30},
+            {"name": "Escalation judgement", "weight": 25},
+            {"name": "Reasoning clarity", "weight": 15},
+        ],
+        "topicId": topic_id,
+        "topicName": topic_name_value,
+    }
+    if payload.get("_meta"):
+        normalized["_meta"] = payload["_meta"]
+    return normalized
+
+
+def normalize_turn_payload(payload: dict) -> dict:
+    evaluation = payload.get("evaluation") or {}
+    next_event = payload.get("nextEvent") or {}
+    artifact = payload.get("artifact") or {}
+    raw_status = str(payload.get("status") or "active")
+    status = "completed" if raw_status == "completed" else "active"
+    score = clamp_score(float(evaluation.get("score") or 0))
+    normalized = {
+        "evaluation": {
+            "score": score,
+            "label": str(evaluation.get("label") or performance_label(score)),
+            "strengths": _text_list(evaluation.get("strengths") or [], ["Recognized at least one core risk signal."]),
+            "gaps": _text_list(evaluation.get("gaps") or [], ["Go further on escalation steps and control checks."]),
+            "policyReasoning": _text_list(evaluation.get("policyReasoning") or [], ["Ground the response in approved controls and escalation steps."]),
+            "recommendedAction": str(evaluation.get("recommendedAction") or "Pause the action and escalate through the approved path."),
+            "citations": _text_list(evaluation.get("citations") or [], ["Prototype policy guidance"]),
+        },
+        "nextEvent": {
+            "speaker": str(next_event.get("speaker") or "Reviewer"),
+            "time": str(next_event.get("time") or "Shortly after"),
+            "location": str(next_event.get("location") or "Case workspace"),
+            "channel": str(next_event.get("channel") or "Chat"),
+            "message": str(next_event.get("message") or "The situation evolves and your judgement is being tested again."),
+        },
+        "artifact": {
+            "type": str(artifact.get("type") or "note"),
+            "title": str(artifact.get("title") or "Follow-up signal"),
+            "content": str(artifact.get("content") or "No new artifact generated."),
+        },
+        "decisionPrompt": str(payload.get("decisionPrompt") or "What would you do next, and how would you justify it?"),
+        "status": status,
+        "summary": str(payload.get("summary") or "The scenario continues based on your latest response."),
+    }
+    if payload.get("_meta"):
+        normalized["_meta"] = payload["_meta"]
+    return normalized
+
+
+def build_ai_opening(user: dict, topic: dict, difficulty: str) -> dict:
+    payload = {
+        "topic": {"id": topic["id"], "name": topic["name"], "description": topic["description"]},
+        "user": {
+            "role": user["role"],
+            "department": user["department"],
+            "experienceYears": user["experienceYears"],
+        },
+        "difficulty": difficulty,
+        "policyGuidance": get_policy_guidance(topic["id"]),
+        "learnerSnapshot": learner_topic_snapshot(user["id"], topic["id"]),
+        "schema": {
+            "title": "string",
+            "summary": "string",
+            "currentSituation": {"speaker": "string", "time": "string", "location": "string", "channel": "string", "message": "string"},
+            "artifact": {"type": "email|chat|alert|form|note", "title": "string", "content": "string"},
+            "responsePrompt": "string",
+            "riskSignals": ["string"],
+            "learningObjectives": ["string"],
+            "rubric": [{"name": "string", "weight": 25}],
+        },
+    }
+    result = generate_json(
+        system_prompt=(
+            "You generate a realistic but constrained compliance training scenario. "
+            "Keep it grounded in the provided topic and policy guidance, avoid legal advice, "
+            "and produce only the requested JSON fields."
+        ),
+        user_payload=payload,
+        task_size="large",
+        temperature=0.5,
+    )
+    return normalize_opening_payload(topic["id"], topic["name"], result)
+
+
+def build_ai_turn(user: dict, topic: dict, difficulty: str, session: dict, learner_response: str, close_session: bool) -> dict:
+    turns = list_ai_simulation_turns(session["id"])
+    recent_turns = [
+        {
+            "turnIndex": turn["turnIndex"],
+            "turnKind": turn["turnKind"],
+            "actor": turn["actor"],
+            "content": turn["content"],
+            "evaluation": turn["evaluation"],
+        }
+        for turn in turns[-4:]
+    ]
+    payload = {
+        "topic": {"id": topic["id"], "name": topic["name"], "description": topic["description"]},
+        "user": {
+            "role": user["role"],
+            "department": user["department"],
+            "experienceYears": user["experienceYears"],
+        },
+        "difficulty": difficulty,
+        "policyGuidance": get_policy_guidance(topic["id"]),
+        "sessionState": {
+            "title": session["state"].get("title"),
+            "summary": session["state"].get("summary"),
+            "currentSituation": session["state"].get("currentSituation"),
+            "responsePrompt": session["state"].get("responsePrompt"),
+            "turnCount": session["state"].get("turnCount", 1),
+            "latestAverageScore": session["state"].get("latestAverageScore", 0),
+        },
+        "recentTurns": recent_turns,
+        "learnerResponse": learner_response,
+        "closeSession": close_session,
+        "schema": {
+            "evaluation": {
+                "score": 0,
+                "label": "Strong|Developing|Needs Practice",
+                "strengths": ["string"],
+                "gaps": ["string"],
+                "policyReasoning": ["string"],
+                "recommendedAction": "string",
+                "citations": ["string"],
+            },
+            "nextEvent": {"speaker": "string", "time": "string", "location": "string", "channel": "string", "message": "string"},
+            "artifact": {"type": "email|chat|alert|form|note", "title": "string", "content": "string"},
+            "decisionPrompt": "string",
+            "status": "active|completed",
+            "summary": "string",
+        },
+    }
+    result = generate_json(
+        system_prompt=(
+            "You are evaluating a learner's compliance response and advancing a simulation by one turn. "
+            "Score with the provided policy guidance, explain consequences clearly, and keep the next event realistic. "
+            "If closeSession is true, you may return status completed."
+        ),
+        user_payload=payload,
+        task_size="large",
+        temperature=0.35,
+    )
+    return normalize_turn_payload(result)
+
+
+def require_ai_session(session_id: str, user_id: str) -> dict:
+    session = get_ai_simulation_session(session_id)
+    if not session or session["userId"] != user_id:
+        raise HTTPException(status_code=404, detail="AI simulation session not found")
+    return session
+
+
+def build_ai_session_response(session: dict) -> dict:
+    return {
+        "session": session,
+        "turns": list_ai_simulation_turns(session["id"]),
+    }
 
 
 def weekly_completion(attempts: list[dict]) -> list[dict]:
@@ -719,6 +962,135 @@ def build_report(
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/ai/status")
+def ai_status() -> dict:
+    try:
+        status = ollama_status()
+    except OllamaError as exc:
+        return {"status": "unavailable", "detail": str(exc)}
+    return {"status": "ok", **status}
+
+
+@app.post("/api/ai/simulations")
+def start_ai_simulation(payload: AiSimulationStartRequest) -> dict:
+    user = require_user(payload.userId)
+    topic = catalog["topicsById"].get(payload.topicId)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    difficulty = normalize_difficulty(payload.difficulty)
+    try:
+        opening = build_ai_opening(user, topic, difficulty)
+    except OllamaError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    model_name = opening.get("_meta", {}).get("model", "")
+    opening_turn_content = opening["currentSituation"]["message"]
+    state = {
+        "title": opening["title"],
+        "summary": opening["summary"],
+        "topicId": topic["id"],
+        "topicName": topic["name"],
+        "difficulty": difficulty,
+        "currentSituation": opening["currentSituation"],
+        "artifact": opening["artifact"],
+        "responsePrompt": opening["responsePrompt"],
+        "riskSignals": opening["riskSignals"],
+        "learningObjectives": opening["learningObjectives"],
+        "rubric": opening["rubric"],
+        "turnCount": 1,
+        "latestAverageScore": learner_topic_snapshot(user["id"], topic["id"])["recentAverageScore"],
+    }
+    session = create_ai_simulation_session(
+        user["id"],
+        payload.sessionType,
+        topic["id"],
+        difficulty,
+        model_name,
+        state,
+    )
+    create_ai_simulation_turn(
+        session["id"],
+        1,
+        "system",
+        opening["currentSituation"]["speaker"],
+        opening_turn_content,
+        model_name,
+        artifact=opening["artifact"],
+    )
+    session = get_ai_simulation_session(session["id"])
+    return {
+        "opening": opening,
+        **build_ai_session_response(session),
+    }
+
+
+@app.get("/api/ai/simulations/{session_id}")
+def get_ai_simulation(session_id: str, userId: str = Query(...)) -> dict:
+    require_user(userId)
+    session = require_ai_session(session_id, userId)
+    return build_ai_session_response(session)
+
+
+@app.post("/api/ai/simulations/{session_id}/turns")
+def submit_ai_simulation_turn(session_id: str, payload: AiSimulationTurnRequest) -> dict:
+    user = require_user(payload.userId)
+    session = require_ai_session(session_id, payload.userId)
+    if session["status"] == "completed":
+        raise HTTPException(status_code=400, detail="This AI simulation session is already complete")
+
+    topic = catalog["topicsById"].get(session["topicId"])
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    learner_text = payload.learnerResponse.strip()
+    if not learner_text:
+        raise HTTPException(status_code=400, detail="Learner response is required")
+
+    learner_turn_index = len(list_ai_simulation_turns(session_id)) + 1
+    create_ai_simulation_turn(
+        session_id,
+        learner_turn_index,
+        "learner",
+        user["name"],
+        learner_text,
+        session["modelName"],
+    )
+
+    try:
+        generated_turn = build_ai_turn(user, topic, session["difficulty"], session, learner_text, payload.closeSession)
+    except OllamaError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    model_name = generated_turn.get("_meta", {}).get("model", session["modelName"])
+    system_turn_index = learner_turn_index + 1
+    create_ai_simulation_turn(
+        session_id,
+        system_turn_index,
+        "system",
+        generated_turn["nextEvent"]["speaker"],
+        generated_turn["nextEvent"]["message"],
+        model_name,
+        artifact=generated_turn["artifact"],
+        evaluation=generated_turn["evaluation"],
+    )
+
+    next_state = {
+        **session["state"],
+        "summary": generated_turn["summary"],
+        "currentSituation": generated_turn["nextEvent"],
+        "artifact": generated_turn["artifact"],
+        "responsePrompt": generated_turn["decisionPrompt"],
+        "turnCount": system_turn_index,
+        "latestAverageScore": generated_turn["evaluation"]["score"],
+        "lastEvaluation": generated_turn["evaluation"],
+    }
+    updated_session = update_ai_simulation_session(session_id, next_state, generated_turn["status"])
+    return {
+        "result": generated_turn,
+        **build_ai_session_response(updated_session),
+    }
 
 
 @app.get("/api/users")

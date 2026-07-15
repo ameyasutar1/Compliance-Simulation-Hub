@@ -731,42 +731,74 @@ function SimulationsPage({ user, onComplete, deepLink, clearDeepLink, onNavigate
   if (active) {
     const node = active.node;
     return (
-      <div className="simulation">
-        <button className="back" onClick={() => setActive(null)}>← Back to simulations</button>
+      <div className="simulation simulation-shell">
+        <div className="simulation-topbar">
+          <button className="back" onClick={() => setActive(null)}>← Back to simulations</button>
+          <div className="simulation-status">
+            <span className="eyebrow">Live simulation</span>
+            <div className="tag-row">
+              <span className="tag violet">{active.scenario.topicNames.join(' · ')}</span>
+              <span className="tag">{active.scenario.difficulty}</span>
+              <span className="tag">{active.scenario.estimatedMinutes} min</span>
+            </div>
+          </div>
+        </div>
         <div className="sim-layout">
-          <article className="email card">
-            <div className="email-top">
-              <div className="mail-icon"><Mail size={18} /></div>
-              <div>
+          <article className="email card case-card">
+            <div className="email-top case-head">
+              <div className="mail-icon case-icon-box"><Mail size={18} /></div>
+              <div className="case-title">
+                <span className="eyebrow">Scenario brief</span>
                 <h2>{active.scenario.title}</h2>
                 <span>{node.time} · {node.location}</span>
               </div>
             </div>
-            <div className="detail-grid">
+            <div className="detail-grid case-meta-grid">
               <div><strong>Speaker</strong><span>{node.speaker}</span></div>
               <div><strong>Channel</strong><span>{node.channel}</span></div>
             </div>
-            <p className="context-line">{node.context}</p>
-            <p className="email-body">{node.content}</p>
-            {node.supportingDocument && <div className="supporting-doc">{node.supportingDocument}</div>}
+            <div className="case-summary">
+              <span className="eyebrow">Pressure context</span>
+              <p className="context-line">{node.context}</p>
+            </div>
+            <div className="case-message">
+              <span className="eyebrow">Incoming request</span>
+              <p className="email-body">{node.content}</p>
+            </div>
+            {node.supportingDocument && (
+              <div className="supporting-doc case-artifact">
+                <span className="eyebrow">Attached context</span>
+                <p>{node.supportingDocument}</p>
+              </div>
+            )}
           </article>
 
-          <aside className="decision card">
-            <span className="eyebrow">STEP {node.step} OF {active.scenario.nodes.length}</span>
-            <h3>What is the best next step?</h3>
-            {node.options.map((option) => (
-              <button
-                key={option.id}
-                className={selectedOption === option.id ? 'option chosen' : 'option'}
-                onClick={() => setSelectedOption(option.id)}
-              >
-                <span>{String.fromCharCode(65 + node.options.indexOf(option))}</span>
-                {option.label}
-              </button>
-            ))}
+          <aside className="decision card decision-panel">
+            <div className="decision-header">
+              <span className="eyebrow">Step {node.step} of {active.scenario.nodes.length}</span>
+              <h3>Choose the best next move</h3>
+              <p>Select the action you would actually take in this situation.</p>
+            </div>
+            <div className="decision-section">
+              <div className="option-group">
+                {node.options.map((option) => (
+                  <button
+                    key={option.id}
+                    className={selectedOption === option.id ? 'option chosen' : 'option'}
+                    onClick={() => setSelectedOption(option.id)}
+                  >
+                    <span>{String.fromCharCode(65 + node.options.indexOf(option))}</span>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {node.reasoningOptions?.length > 0 && (
-              <div className="reasoning-box">
-                <span className="eyebrow">OPTIONAL REASONING</span>
+              <div className="reasoning-box reasoning-panel">
+                <div className="reasoning-head">
+                  <span className="eyebrow">Optional reasoning</span>
+                  <p>Tell the report what influenced your decision.</p>
+                </div>
                 <div className="chip-row">
                   {node.reasoningOptions.map((reason) => (
                     <button
@@ -780,27 +812,36 @@ function SimulationsPage({ user, onComplete, deepLink, clearDeepLink, onNavigate
                 </div>
               </div>
             )}
-            {!consequence ? (
-              <button className="primary full" disabled={!selectedOption} onClick={submitDecision}>
-                Submit decision
-              </button>
-            ) : (
-              <div className="feedback">
-                <b>Consequence</b>
-                <p>{consequence.consequence}</p>
-                <button
-                  className="text-btn"
-                  onClick={() => {
-                    setActive((current) => ({ ...current, node: consequence.nextNode }));
-                    setSelectedOption('');
-                    setSelectedReason('');
-                    setConsequence(null);
-                  }}
-                >
-                  Continue →
+            <div className="decision-footer">
+              {!consequence ? (
+                <button className="primary full" disabled={!selectedOption} onClick={submitDecision}>
+                  Submit decision
                 </button>
-              </div>
-            )}
+              ) : (
+                <div className="feedback consequence-panel">
+                  <span className="eyebrow">Immediate consequence</span>
+                  <b>What happened next</b>
+                  <p>{consequence.consequence}</p>
+                  <button
+                    className="text-btn"
+                    onClick={() => {
+                      setActive((current) => ({ ...current, node: consequence.nextNode }));
+                      setSelectedOption('');
+                      setSelectedReason('');
+                      setConsequence(null);
+                    }}
+                  >
+                    Continue to next step →
+                  </button>
+                </div>
+              )}
+              {!consequence && (
+                <div className="decision-note">
+                  <span className="eyebrow">Decision principle</span>
+                  <p>Prioritize approved channels, verification, and escalation over urgency or hierarchy.</p>
+                </div>
+              )}
+            </div>
           </aside>
         </div>
       </div>

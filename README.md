@@ -1,6 +1,6 @@
 # Compliance Simulation Platform
 
-Rule-based compliance training prototype with a React frontend and a FastAPI backend backed by PostgreSQL persistence.
+Compliance training prototype with a React frontend and a FastAPI backend backed by PostgreSQL persistence. The platform now also includes the first Ollama-powered AI simulation foundation alongside the original static flows.
 
 ## What is included
 
@@ -15,6 +15,7 @@ Rule-based compliance training prototype with a React frontend and a FastAPI bac
 - Scenario Library with filters
 - Manager Dashboard with aggregate analytics
 - Settings and demo reset
+- Ollama-backed AI simulation endpoints with free-text turn handling
 
 ## Project structure
 
@@ -25,6 +26,7 @@ Rule-based compliance training prototype with a React frontend and a FastAPI bac
 ## Backend setup
 
 The backend now expects PostgreSQL through `DATABASE_URL`.
+It can also load Ollama settings from the repository-level `.env`.
 
 Example:
 
@@ -35,6 +37,21 @@ python3 -m venv .venv
 pip install -r requirements.txt
 export DATABASE_URL=postgresql://compliance_user:compliance_password@127.0.0.1:5432/compliance_platform
 python -m uvicorn app.main:app --reload
+```
+
+If you want to use the default local AI setup, copy `.env.example` to `.env` and keep Ollama running with:
+
+```bash
+ollama list
+```
+
+Expected defaults:
+
+```text
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_SMALL_MODEL=gemma3:270m
+OLLAMA_LARGE_MODEL=gemma3:4b
+OLLAMA_CONTEXT_WINDOW=2048
 ```
 
 The backend runs on `http://127.0.0.1:8000` by default.
@@ -119,5 +136,11 @@ docker run --rm -p 8000:8000 \
 
 - Seed content is defined in `backend/app/seed_data.py`.
 - Mutable progress is stored in PostgreSQL through `backend/app/db.py`.
+- Ollama integration, token guards, and AI simulation orchestration live in `backend/app/ai.py` and `backend/app/main.py`.
+- Initial AI endpoints:
+  - `GET /api/ai/status`
+  - `POST /api/ai/simulations`
+  - `GET /api/ai/simulations/{session_id}`
+  - `POST /api/ai/simulations/{session_id}/turns`
 - Demo reset removes live attempts and resets settings while keeping seeded history.
 # Compliance-Simulation-Hub

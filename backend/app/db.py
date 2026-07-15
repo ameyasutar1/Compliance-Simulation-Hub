@@ -9,9 +9,11 @@ from datetime import UTC, datetime, timedelta
 from psycopg import connect
 from psycopg.rows import dict_row
 
+from .config import load_env_file
 from .seed_data import load_catalog
 
 
+load_env_file()
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://compliance_user:compliance_password@127.0.0.1:5432/compliance_platform",
@@ -91,6 +93,39 @@ def _ensure_tables(connection) -> None:
                 activity_type TEXT NOT NULL,
                 state_json JSONB NOT NULL,
                 started_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_simulation_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                session_type TEXT NOT NULL,
+                topic_id TEXT NOT NULL,
+                difficulty TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                model_name TEXT NOT NULL,
+                state_json JSONB NOT NULL,
+                started_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_simulation_turns (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES ai_simulation_sessions(id) ON DELETE CASCADE,
+                turn_index INTEGER NOT NULL,
+                turn_kind TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                content TEXT NOT NULL,
+                artifact_json JSONB,
+                evaluation_json JSONB,
+                model_name TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
             )
             """
         )
@@ -404,6 +439,178 @@ def delete_active_attempt(attempt_id: str) -> None:
         connection.commit()
 
 
+def create_ai_simulation_session(
+    user_id: str,
+    session_type: str,
+    topic_id: str,
+    difficulty: str,
+    model_name: str,
+    state: dict,
+) -> dict:
+    session_id = str(uuid.uuid4())
+    started_at = now_iso()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ai_simulation_sessions (
+                    id, user_id, session_type, topic_id, difficulty, status, model_name,
+                    state_json, started_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, 'active', %s, %s::jsonb, %s, %s)
+                """,
+                (
+                    session_id,
+                    user_id,
+                    session_type,
+                    topic_id,
+                    difficulty,
+                    model_name,
+                    json.dumps(state),
+                    started_at,
+                    started_at,
+                ),
+            )
+        connection.commit()
+    return get_ai_simulation_session(session_id)
+
+
+def get_ai_simulation_session(session_id: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, user_id, session_type, topic_id, difficulty, status, model_name,
+                       state_json, started_at, updated_at, completed_at
+                FROM ai_simulation_sessions
+                WHERE id = %s
+                """,
+                (session_id,),
+            )
+            row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "userId": row["user_id"],
+        "sessionType": row["session_type"],
+        "topicId": row["topic_id"],
+        "difficulty": row["difficulty"],
+        "status": row["status"],
+        "modelName": row["model_name"],
+        "state": row["state_json"] if isinstance(row["state_json"], dict) else json.loads(row["state_json"]),
+        "startedAt": row["started_at"].isoformat() if hasattr(row["started_at"], "isoformat") else row["started_at"],
+        "updatedAt": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else row["updated_at"],
+        "completedAt": row["completed_at"].isoformat() if row["completed_at"] and hasattr(row["completed_at"], "isoformat") else row["completed_at"],
+    }
+
+
+def update_ai_simulation_session(session_id: str, state: dict, status: str | None = None) -> dict | None:
+    updated_at = now_iso()
+    completed_at = updated_at if status == "completed" else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if status:
+                cursor.execute(
+                    """
+                    UPDATE ai_simulation_sessions
+                    SET state_json = %s::jsonb, status = %s, updated_at = %s, completed_at = %s
+                    WHERE id = %s
+                    """,
+                    (json.dumps(state), status, updated_at, completed_at, session_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE ai_simulation_sessions
+                    SET state_json = %s::jsonb, updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (json.dumps(state), updated_at, session_id),
+                )
+        connection.commit()
+    return get_ai_simulation_session(session_id)
+
+
+def create_ai_simulation_turn(
+    session_id: str,
+    turn_index: int,
+    turn_kind: str,
+    actor: str,
+    content: str,
+    model_name: str,
+    artifact: dict | None = None,
+    evaluation: dict | None = None,
+) -> dict:
+    turn_id = str(uuid.uuid4())
+    created_at = now_iso()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ai_simulation_turns (
+                    id, session_id, turn_index, turn_kind, actor, content,
+                    artifact_json, evaluation_json, model_name, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                """,
+                (
+                    turn_id,
+                    session_id,
+                    turn_index,
+                    turn_kind,
+                    actor,
+                    content,
+                    json.dumps(artifact) if artifact is not None else None,
+                    json.dumps(evaluation) if evaluation is not None else None,
+                    model_name,
+                    created_at,
+                ),
+            )
+        connection.commit()
+    return {
+        "id": turn_id,
+        "sessionId": session_id,
+        "turnIndex": turn_index,
+        "turnKind": turn_kind,
+        "actor": actor,
+        "content": content,
+        "artifact": artifact,
+        "evaluation": evaluation,
+        "modelName": model_name,
+        "createdAt": created_at,
+    }
+
+
+def list_ai_simulation_turns(session_id: str) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, session_id, turn_index, turn_kind, actor, content,
+                       artifact_json, evaluation_json, model_name, created_at
+                FROM ai_simulation_turns
+                WHERE session_id = %s
+                ORDER BY turn_index, created_at
+                """,
+                (session_id,),
+            )
+            rows = cursor.fetchall()
+    return [
+        {
+            "id": row["id"],
+            "sessionId": row["session_id"],
+            "turnIndex": row["turn_index"],
+            "turnKind": row["turn_kind"],
+            "actor": row["actor"],
+            "content": row["content"],
+            "artifact": row["artifact_json"] if isinstance(row["artifact_json"], dict) or row["artifact_json"] is None else json.loads(row["artifact_json"]),
+            "evaluation": row["evaluation_json"] if isinstance(row["evaluation_json"], dict) or row["evaluation_json"] is None else json.loads(row["evaluation_json"]),
+            "modelName": row["model_name"],
+            "createdAt": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else row["created_at"],
+        }
+        for row in rows
+    ]
+
+
 def record_completed_attempt(record: dict) -> dict:
     attempt_id = record.get("id") or str(uuid.uuid4())
     with get_connection() as connection:
@@ -491,6 +698,8 @@ def reset_demo_data() -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM active_attempts")
+            cursor.execute("DELETE FROM ai_simulation_turns")
+            cursor.execute("DELETE FROM ai_simulation_sessions")
             cursor.execute("DELETE FROM activity_attempts WHERE is_seeded = FALSE")
             cursor.execute("UPDATE settings SET daily_reminder = TRUE, weekly_recap = TRUE, focus_mode = FALSE")
         connection.commit()
