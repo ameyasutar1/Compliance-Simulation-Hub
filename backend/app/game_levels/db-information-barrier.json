@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-information-barrier","title":"Across the Information Barrier","topicId":"market-abuse","topicName":"Market Abuse","difficulty":"Advanced","estimatedMinutes":7,
+  "brief":"Inside a simulated Investment Bank deal floor, confidential advisory information reaches an employee supporting a markets desk.","objective":"Stop the information flow, protect the restricted matter and notify the appropriate control function.","startNodeId":"deal-message","navigationMode":"rules",
+  "assignmentRoles":["Trader","Sales Analyst","Compliance Analyst"],"assignmentDepartments":["Sales","Compliance"],"dueInDays":9,
+  "world":{"room":"Investment Bank Control Floor","accent":"#d15368","npc":{"x":700,"y":300},"missionSpot":{"x":7.6,"y":5.2},"scene":{"name":"Investment Bank Deal Floor","backdrop":"#777f98","backdropAccent":"#cdd1e0","playerSpawn":{"x":6,"y":8.7},
+    "walls":[{"x1":7,"y1":0,"x2":7,"y2":3.5},{"x1":0,"y1":4.2,"x2":6.3,"y2":4.2},{"x1":7.2,"y1":4.2,"x2":14,"y2":4.2}],
+    "rooms":[{"x":1,"y":0.6,"label":"ADVISORY","accent":"#7659c6"},{"x":7.8,"y":0.6,"label":"FIC MARKETS","accent":"#d15368"},{"x":5,"y":5,"label":"CONTROL ROOM","accent":"#249178"}],
+    "furniture":[{"type":"meeting-table","x":1.7,"y":1.6,"accent":"#7659c6"},{"type":"desk","x":8.1,"y":1.4,"accent":"#d15368"},{"type":"desk","x":10.4,"y":2.4,"accent":"#d15368"},{"type":"server","x":5.1,"y":6.4,"accent":"#233c52"},{"type":"desk","x":7.3,"y":6.6,"accent":"#249178"},{"type":"plant","x":12.8,"y":8.8}] }},
+  "nodes":[{"id":"deal-message","speaker":"Advisory Colleague","message":"A client is preparing a confidential acquisition. Can your markets desk quietly check likely price impact before tomorrow?","prompt":"What is your immediate response?","artifact":{"type":"chat","title":"Restricted deal message","body":"Non-public acquisition details were sent across business areas without clearance."},"choices":[
+    {"id":"stop-control-room","label":"Stop the discussion, do not share further and contact the Control Room.","scoreDelta":35,"riskDelta":-28,"consequence":"The potential wall crossing is contained and assessed through the control process.","nextNodeId":null},
+    {"id":"anonymous-check","label":"Ask the desk using an anonymous company description.","scoreDelta":-20,"riskDelta":25,"consequence":"Context may still reveal the issuer and the information continues to spread.","nextNodeId":null},
+    {"id":"personal-view","label":"Check the security in your personal watchlist first.","scoreDelta":-35,"riskDelta":40,"consequence":"Restricted information influences personal market activity.","nextNodeId":null}
+  ]}]
+}

@@ -79,6 +79,10 @@ The backend validates every JSON file at startup. AI routing can select only fro
 `possibleNextNodeIds`; invalid AI output or an unavailable model automatically uses
 the authored `nextNodeId` fallback.
 
+The included Deutsche Bank-themed levels are fictional training prototypes based
+on public business descriptions and general compliance principles. They are not
+official Deutsche Bank policy, controls or training content.
+
 When the backend runs inside Docker, it automatically defaults Ollama to:
 
 ```text

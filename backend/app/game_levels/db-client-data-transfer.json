@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-client-data-transfer","title":"The Cross-Border Client File","topicId":"data-privacy","topicName":"Data Privacy","difficulty":"Intermediate","estimatedMinutes":6,
+  "brief":"A simulated Deutsche Bank client service team needs records for an overseas meeting, but the proposed transfer route is not approved.","objective":"Enable the client request while protecting confidential information and observing transfer controls.","startNodeId":"transfer-request","navigationMode":"rules",
+  "assignmentRoles":["Operations Analyst","Relationship Manager","Compliance Analyst"],"assignmentDepartments":["Operations","Private Bank","Compliance"],"dueInDays":14,
+  "world":{"room":"Global Client Service Centre","accent":"#2f7fbd","npc":{"x":700,"y":330},"missionSpot":{"x":8.1,"y":5.5},"scene":{"name":"Global Client Service Centre","backdrop":"#7ea6b2","backdropAccent":"#c4dce0","playerSpawn":{"x":5.8,"y":8.6},
+    "walls":[{"x1":0,"y1":4.4,"x2":6.2,"y2":4.4},{"x1":7.1,"y1":4.4,"x2":14,"y2":4.4},{"x1":9.5,"y1":0,"x2":9.5,"y2":3.6}],
+    "rooms":[{"x":1,"y":0.7,"label":"CLIENT RECORDS","accent":"#2f7fbd"},{"x":6.4,"y":0.7,"label":"TRANSFER REVIEW","accent":"#d58b36"},{"x":10,"y":0.7,"label":"RELATIONSHIP TEAM","accent":"#5b72c9"},{"x":6.5,"y":5.1,"label":"SECURE DELIVERY","accent":"#1b9a78"}],
+    "furniture":[{"type":"server","x":1.4,"y":1.5,"accent":"#173b54"},{"type":"desk","x":3.2,"y":2.2,"accent":"#2f7fbd"},{"type":"desk","x":6.6,"y":1.8,"accent":"#d58b36"},{"type":"meeting-table","x":10.4,"y":1.8,"accent":"#5b72c9"},{"type":"desk","x":7,"y":6.4,"accent":"#1b9a78"},{"type":"plant","x":12.6,"y":8.5}] }},
+  "nodes":[{"id":"transfer-request","speaker":"International Client Service Lead","message":"The client meeting starts soon. Upload the full relationship file to my personal cloud drive so the overseas team can open it.","prompt":"How do you deliver the information safely?","artifact":{"type":"email","title":"Overseas client file request","body":"The package contains identity documents, account history, contact details and relationship notes."},"choices":[
+    {"id":"approved-route","label":"Confirm the business need, minimize the file and use the approved secure route.","scoreDelta":32,"riskDelta":-28,"consequence":"Only necessary data is delivered through an authorized and auditable channel.","nextNodeId":null},
+    {"id":"personal-cloud","label":"Use the personal drive because access can be revoked after the meeting.","scoreDelta":-32,"riskDelta":38,"consequence":"Sensitive client information leaves the controlled environment.","nextNodeId":null},
+    {"id":"password-email","label":"Email the full archive with a password sent in the same thread.","scoreDelta":-20,"riskDelta":25,"consequence":"A password does not make an unapproved transfer route acceptable.","nextNodeId":null}
+  ]}]
+}

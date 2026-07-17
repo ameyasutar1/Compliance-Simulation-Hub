@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-transaction-reporting","title":"The Reporting Cut-Off","topicId":"regulatory-reporting","topicName":"Regulatory Reporting","difficulty":"Advanced","estimatedMinutes":8,
+  "brief":"A simulated Deutsche Bank reporting team finds incomplete trade identifiers shortly before a regulatory submission deadline.","objective":"Protect reporting accuracy while managing the time-critical submission.","startNodeId":"quality-break","navigationMode":"rules",
+  "assignmentRoles":["Operations Analyst","Finance Analyst","Compliance Analyst"],"assignmentDepartments":["Operations","Finance","Compliance"],"dueInDays":10,
+  "world":{"room":"Transaction Reporting Control Room","accent":"#d26054","npc":{"x":610,"y":300},"missionSpot":{"x":6.8,"y":4.8},"scene":{"name":"Transaction Reporting Control Room","backdrop":"#7f929e","backdropAccent":"#c8d2d7","playerSpawn":{"x":7.3,"y":8.8},
+    "walls":[{"x1":0,"y1":3.8,"x2":4.7,"y2":3.8},{"x1":5.6,"y1":3.8,"x2":10.2,"y2":3.8},{"x1":11.1,"y1":3.8,"x2":14,"y2":3.8},{"x1":5.1,"y1":0,"x2":5.1,"y2":3.1}],
+    "rooms":[{"x":0.8,"y":0.6,"label":"TRADE INTAKE","accent":"#3c78c2"},{"x":5.8,"y":0.6,"label":"DATA QUALITY","accent":"#d26054"},{"x":10.5,"y":0.6,"label":"SUBMISSION","accent":"#d29a32"},{"x":5.2,"y":4.8,"label":"CONTROL DESK","accent":"#259277"}],
+    "furniture":[{"type":"desk","x":1.1,"y":1.5,"accent":"#3c78c2"},{"type":"desk","x":3,"y":1.9,"accent":"#3c78c2"},{"type":"server","x":6,"y":1.4,"accent":"#253d52"},{"type":"desk","x":8,"y":2,"accent":"#d26054"},{"type":"desk","x":11.2,"y":1.7,"accent":"#d29a32"},{"type":"meeting-table","x":5.4,"y":5.7,"accent":"#259277"}] }},
+  "nodes":[{"id":"quality-break","speaker":"Reporting Control Lead","message":"The deadline is in twelve minutes. Several records have missing or unvalidated identifiers, but the submission dashboard is otherwise green.","prompt":"What do you do before submission?","artifact":{"type":"trade-alert","title":"Transaction data quality exception","body":"Unvalidated LEI values and inconsistent execution timestamps affect a subset of reportable trades."},"choices":[
+    {"id":"assess-escalate","label":"Quantify the affected records, escalate the break and follow the controlled correction path.","scoreDelta":34,"riskDelta":-28,"consequence":"The issue is transparent, scoped and handled through an auditable reporting control.","nextNodeId":null},
+    {"id":"submit-estimates","label":"Populate likely identifiers and submit before the deadline.","scoreDelta":-34,"riskDelta":38,"consequence":"Unverified values create inaccurate regulatory reporting.","nextNodeId":null},
+    {"id":"exclude-silently","label":"Remove the affected trades without documenting the exclusion.","scoreDelta":-26,"riskDelta":31,"consequence":"The report appears complete while reportable activity is omitted without governance.","nextNodeId":null}
+  ]}]
+}

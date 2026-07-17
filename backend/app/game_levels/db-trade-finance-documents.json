@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-trade-finance-documents","title":"The Altered Trade Documents","topicId":"aml","topicName":"AML","difficulty":"Advanced","estimatedMinutes":8,
+  "brief":"A simulated Corporate Bank trade-finance file contains inconsistent invoices, a new shipping route and an unexplained intermediary.","objective":"Identify trade-based money-laundering indicators and escalate the file without losing evidence.","startNodeId":"document-check","navigationMode":"rules",
+  "assignmentRoles":["Operations Analyst","Operations Associate","Finance Analyst","Compliance Analyst"],"assignmentDepartments":["Operations","Finance","Compliance"],"dueInDays":16,
+  "world":{"room":"Trade Finance Review","accent":"#d48b32","npc":{"x":620,"y":320},"missionSpot":{"x":6.8,"y":5.4},"scene":{"name":"Trade Finance Document Lab","backdrop":"#9b927d","backdropAccent":"#e2d5b6","playerSpawn":{"x":5.8,"y":8.9},
+    "walls":[{"x1":4.8,"y1":0,"x2":4.8,"y2":3.6},{"x1":9.3,"y1":0,"x2":9.3,"y2":3.6},{"x1":0,"y1":4.4,"x2":6.1,"y2":4.4},{"x1":7,"y1":4.4,"x2":14,"y2":4.4}],
+    "rooms":[{"x":0.9,"y":0.6,"label":"DOCUMENT INTAKE","accent":"#3b72b8"},{"x":5.4,"y":0.6,"label":"TRADE REVIEW","accent":"#d48b32"},{"x":10,"y":0.6,"label":"ESCALATIONS","accent":"#c65050"},{"x":5.1,"y":5.2,"label":"EVIDENCE TABLE","accent":"#247f6c"}],
+    "furniture":[{"type":"desk","x":1.1,"y":1.5,"accent":"#3b72b8"},{"type":"desk","x":5.5,"y":1.6,"accent":"#d48b32"},{"type":"desk","x":7.2,"y":2.4,"accent":"#d48b32"},{"type":"meeting-table","x":5.8,"y":6.3,"accent":"#247f6c"},{"type":"server","x":11.7,"y":2,"accent":"#443d35"},{"type":"plant","x":12.7,"y":8.8}] }},
+  "nodes":[{"id":"document-check","speaker":"Trade Finance Specialist","message":"The invoice value increased by 40%, the goods description changed, and payment now passes through a new intermediary in another jurisdiction.","prompt":"How do you handle the document set?","artifact":{"type":"payment","title":"Trade document discrepancy","body":"Invoice, bill of lading and routing instructions contain material inconsistencies."},"choices":[
+    {"id":"preserve-escalate","label":"Pause processing, preserve the documents and escalate the combined indicators.","scoreDelta":34,"riskDelta":-27,"consequence":"The indicators remain linked and available for an AML assessment.","nextNodeId":null},
+    {"id":"correct-invoice","label":"Ask the client to correct only the invoice and continue.","scoreDelta":-12,"riskDelta":18,"consequence":"The wider routing and intermediary risks remain unexamined.","nextNodeId":null},
+    {"id":"process-relationship","label":"Process because the customer has a long relationship with the bank.","scoreDelta":-30,"riskDelta":36,"consequence":"Customer familiarity suppresses review of unusual trade activity.","nextNodeId":null}
+  ]}]
+}

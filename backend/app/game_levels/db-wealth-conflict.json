@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-wealth-conflict","title":"The Family Office Conflict","topicId":"conflicts","topicName":"Conflicts of Interest","difficulty":"Intermediate","estimatedMinutes":6,
+  "brief":"A simulated Wealth Management opportunity involves a family connection and a referral fee that has not been disclosed.","objective":"Disclose the relationship and remove personal influence from the client decision.","startNodeId":"referral-offer","navigationMode":"rules",
+  "assignmentRoles":["Relationship Manager","Sales Analyst","Compliance Analyst"],"assignmentDepartments":["Sales","Compliance"],"dueInDays":20,
+  "world":{"room":"Wealth Management Client Centre","accent":"#8a61bf","npc":{"x":650,"y":300},"missionSpot":{"x":6.9,"y":5.2},"scene":{"name":"Wealth Management Client Centre","backdrop":"#8e879f","backdropAccent":"#d9d2e6","playerSpawn":{"x":6.2,"y":8.8},
+    "walls":[{"x1":5,"y1":0,"x2":5,"y2":3.5},{"x1":0,"y1":4.2,"x2":6,"y2":4.2},{"x1":7,"y1":4.2,"x2":14,"y2":4.2}],
+    "rooms":[{"x":0.8,"y":0.6,"label":"CLIENT LOUNGE","accent":"#8a61bf"},{"x":5.7,"y":0.6,"label":"ADVISORY TEAM","accent":"#4e73bd"},{"x":5.1,"y":5,"label":"CONFLICTS REVIEW","accent":"#248d72"}],
+    "furniture":[{"type":"meeting-table","x":1.4,"y":1.7,"accent":"#8a61bf"},{"type":"desk","x":5.8,"y":1.5,"accent":"#4e73bd"},{"type":"desk","x":8,"y":2.3,"accent":"#4e73bd"},{"type":"desk","x":5.6,"y":6.4,"accent":"#248d72"},{"type":"plant","x":12.8,"y":8.8}] }},
+  "nodes":[{"id":"referral-offer","speaker":"External Investment Adviser","message":"Your relative introduced this family office. If they invest, I will pay a referral fee privately. There is no need to complicate the client discussion.","prompt":"What do you do before any recommendation?","artifact":{"type":"email","title":"Private referral arrangement","body":"Proposed personal payment is linked to a client investment decision and has not been disclosed."},"choices":[
+    {"id":"disclose-recuse","label":"Disclose the relationship and fee, stop the recommendation and seek conflicts guidance.","scoreDelta":34,"riskDelta":-27,"consequence":"The conflict is visible and can be independently managed.","nextNodeId":null},
+    {"id":"donate-fee","label":"Continue but promise to donate the referral fee later.","scoreDelta":-16,"riskDelta":21,"consequence":"Future use of the fee does not remove the undisclosed influence.","nextNodeId":null},
+    {"id":"private-arrangement","label":"Accept because the product may still benefit the client.","scoreDelta":-32,"riskDelta":38,"consequence":"Personal benefit compromises the integrity of the recommendation.","nextNodeId":null}
+  ]}]
+}

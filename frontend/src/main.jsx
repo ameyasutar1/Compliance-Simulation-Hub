@@ -1,4 +1,4 @@
-import React, { lazy, startTransition, Suspense, useDeferredValue, useEffect, useState } from 'react';
+import React, { lazy, startTransition, Suspense, useDeferredValue, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -1706,14 +1706,26 @@ function CoachPage({ user }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Ask me about a compliance situation, policy control, or escalation decision. I will answer using approved guidance.',
-      topicName: 'Policy guidance',
+      content: "Tell me what happened, who is asking you to act, and what decision you need to make. I'll help identify the relevant control, the safest immediate action, and when to escalate.",
+      topicName: 'Start here',
       sources: [],
     },
   ]);
   const [composer, setComposer] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const messagesEndRef = useRef(null);
+
+  const suggestedQuestions = [
+    { topic: 'Data handling', question: 'Can I send customer data to a personal email if it is urgent?' },
+    { topic: 'Customer due diligence', question: 'What should I do when beneficial ownership evidence is incomplete?' },
+    { topic: 'Control pressure', question: 'A senior manager asked me to bypass a control. How should I respond?' },
+    { topic: 'Third-party access', question: 'When should a vendor access request be escalated?' },
+  ];
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, sending]);
 
   const sendQuestion = async (event, suggestedQuestion) => {
     event?.preventDefault();
@@ -1749,65 +1761,115 @@ function CoachPage({ user }) {
     }
   };
 
+  const handleComposerKeyDown = (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    sendQuestion(event);
+  };
+
   return (
     <div className="policy-coach-layout">
       <article className="card policy-chat-panel">
         <div className="policy-chat-head">
-          <div className="coach-icon"><Brain /></div>
-          <div>
-            <h2>Policy Coach</h2>
-            <p>Grounded answers for day-to-day compliance questions.</p>
+          <div className="coach-identity">
+            <div className="coach-icon"><Brain size={20} /></div>
+            <div>
+              <span className="eyebrow">GROUNDED POLICY SUPPORT</span>
+              <h2>Ask the Policy Coach</h2>
+              <p>Describe the situation in your own words. The coach will identify the control and a safe next step.</p>
+            </div>
           </div>
-          <span className="tag green"><ShieldCheck size={13} /> Policy grounded</span>
+          <div className="policy-coach-status">
+            <i />
+            <div>
+              <strong>Ready to help</strong>
+              <span>Approved guidance</span>
+            </div>
+          </div>
         </div>
-        <div className="policy-messages">
+        <div className="policy-messages" role="log" aria-live="polite" aria-label="Policy Coach conversation">
           {messages.map((message, index) => (
-            <div key={`${message.role}-${index}`} className={`policy-message ${message.role}`}>
+            <div key={`${message.role}-${index}`} className={`policy-message ${message.role} ${index === 0 ? 'welcome-message' : ''}`}>
               {message.role === 'assistant' && <div className="policy-message-avatar"><Brain size={16} /></div>}
-              <div>
-                {message.topicName && <span>{message.topicName}{message.fallback ? ' · Offline guidance' : ''}</span>}
-                <p>{message.content}</p>
-                {message.sources?.length > 0 && (
-                  <details>
-                    <summary>Approved guidance used</summary>
-                    {message.sources.map((source) => <small key={source}>{source}</small>)}
-                  </details>
-                )}
+              <div className="policy-message-stack">
+                <div className="policy-message-meta">
+                  <strong>{message.role === 'assistant' ? 'Policy Coach' : 'You'}</strong>
+                  {message.topicName && <span>{message.topicName}</span>}
+                  {message.fallback && <span className="offline-guidance">Standard guidance</span>}
+                </div>
+                <div className="policy-message-bubble">
+                  <p>{message.content}</p>
+                  {message.sources?.length > 0 && (
+                    <details>
+                      <summary><ShieldCheck size={14} /> Guidance basis <b>{message.sources.length}</b></summary>
+                      <div className="policy-source-list">
+                        {message.sources.map((source) => (
+                          <div key={source}><Check size={13} /><small>{source}</small></div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
               </div>
             </div>
           ))}
-          {sending && <div className="policy-message assistant loading-message"><div className="policy-message-avatar"><Brain size={16} /></div><p>Reviewing approved guidance...</p></div>}
+          {sending && (
+            <div className="policy-message assistant loading-message">
+              <div className="policy-message-avatar"><Brain size={16} /></div>
+              <div className="policy-message-stack">
+                <div className="policy-message-meta"><strong>Policy Coach</strong><span>Reviewing guidance</span></div>
+                <div className="policy-message-bubble policy-typing" aria-label="Policy Coach is responding"><i /><i /><i /></div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
-        {error && <ErrorNotice message={error} />}
+        {error && <div className="policy-error"><ErrorNotice message={error} /></div>}
         <form className="policy-composer" onSubmit={sendQuestion}>
-          <textarea
-            value={composer}
-            onChange={(event) => setComposer(event.target.value)}
-            placeholder="Describe the situation or ask a policy question..."
-            rows={3}
-          />
-          <button className="primary" disabled={!composer.trim() || sending}>
-            <Send size={16} /> {sending ? 'Checking guidance...' : 'Ask Policy Coach'}
-          </button>
+          <div className="policy-composer-shell">
+            <textarea
+              value={composer}
+              onChange={(event) => setComposer(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder="Describe what happened, the pressure you are under, and the decision you need to make..."
+              rows={2}
+              aria-label="Message the Policy Coach"
+            />
+            <div className="policy-composer-actions">
+              <span><ShieldCheck size={13} /> Grounded in approved guidance</span>
+              <span className="composer-shortcut">Shift + Enter for a new line</span>
+              <button className="primary" disabled={!composer.trim() || sending} aria-label="Send question to Policy Coach">
+                <Send size={16} /> {sending ? 'Reviewing' : 'Send'}
+              </button>
+            </div>
+          </div>
         </form>
       </article>
 
       <aside className="card policy-coach-aside">
-        <span className="eyebrow">SUGGESTED QUESTIONS</span>
-        <h3>Common situations</h3>
-        {[
-          'Can I send customer data to a personal email if it is urgent?',
-          'What should I do when beneficial ownership evidence is incomplete?',
-          'A senior manager asked me to bypass a control. How should I respond?',
-          'When should a vendor access request be escalated?',
-        ].map((question) => (
-          <button key={question} onClick={(event) => sendQuestion(event, question)} disabled={sending}>
-            <span>{question}</span><ArrowRight size={15} />
-          </button>
-        ))}
+        <div className="policy-aside-head">
+          <div className="policy-aside-icon"><Sparkles size={18} /></div>
+          <div>
+            <span className="eyebrow">START A CONVERSATION</span>
+            <h3>Common situations</h3>
+            <p>Choose a prompt or describe what happened in your own words.</p>
+          </div>
+        </div>
+        <div className="policy-suggestion-list">
+          {suggestedQuestions.map(({ topic, question }, index) => (
+            <button key={question} onClick={(event) => sendQuestion(event, question)} disabled={sending}>
+              <span className="policy-suggestion-number">{String(index + 1).padStart(2, '0')}</span>
+              <span><small>{topic}</small><b>{question}</b></span>
+              <ArrowRight size={15} />
+            </button>
+          ))}
+        </div>
         <div className="policy-boundary-note">
           <ShieldAlert size={18} />
-          <p>The coach supports internal policy decisions. It does not replace Legal or Compliance approval where required.</p>
+          <div>
+            <strong>Know the boundary</strong>
+            <p>The coach helps you find the next safe step. It does not replace Legal or Compliance approval where required.</p>
+          </div>
         </div>
       </aside>
     </div>

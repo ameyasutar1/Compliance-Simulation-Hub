@@ -2018,25 +2018,117 @@ def coach_search(query: str = Query(..., min_length=1)) -> list[dict]:
     return matches[:15]
 
 
-def infer_coach_topic(message: str) -> str:
-    normalized = message.lower()
-    aliases = {
-        "aml": ["aml", "money laundering", "payment", "transaction", "beneficiary"],
-        "kyc": ["kyc", "onboarding", "ownership", "source of funds", "customer due diligence"],
-        "data-privacy": ["privacy", "personal data", "customer data", "email", "confidential"],
-        "sanctions": ["sanction", "watchlist", "restricted country"],
-        "market-abuse": ["inside information", "market abuse", "trade", "tip"],
-        "information-security": ["password", "access", "security", "credential", "system"],
-        "third-party-risk": ["vendor", "supplier", "third party", "external"],
-        "conflicts": ["conflict", "gift", "entertainment", "personal interest"],
-        "regulatory-reporting": ["regulatory", "reporting", "filing", "deadline"],
-    }
+COACH_TOPIC_ALIASES = {
+    "aml": ["aml", "money laundering", "payment", "transaction", "beneficiary", "source of wealth"],
+    "kyc": ["kyc", "onboarding", "ownership", "source of funds", "customer due diligence", "ubo"],
+    "data-privacy": ["privacy", "personal data", "customer data", "client data", "personal email", "confidential"],
+    "sanctions": ["sanction", "watchlist", "restricted country", "screening alert"],
+    "market-abuse": ["inside information", "market abuse", "insider", "trade", "tip", "deal information"],
+    "information-security": ["password", "access", "security", "credential", "system", "personal drive"],
+    "third-party-risk": ["vendor access", "vendor", "supplier access", "supplier", "third party", "third-party", "external access"],
+    "conflicts": [
+        "conflict",
+        "gift",
+        "entertainment",
+        "personal interest",
+        "family member",
+        "investment",
+        "personal trading",
+        "brokerage account",
+        "outside activity",
+        "financial interest",
+    ],
+    "regulatory-reporting": ["regulatory", "reporting", "filing", "deadline", "submission"],
+    "conduct-risk": ["bypass", "skip control", "senior manager", "senior stakeholder", "pressure", "shortcut"],
+}
+
+
+def normalized_coach_message(message: str) -> str:
+    return " ".join(message.lower().strip(" \t\n.,!?;:").split())
+
+
+def coach_topic_match(message: str) -> tuple[str, int]:
+    normalized = normalized_coach_message(message)
     scored = {
         topic_id: sum(1 for alias in topic_aliases if alias in normalized)
-        for topic_id, topic_aliases in aliases.items()
+        for topic_id, topic_aliases in COACH_TOPIC_ALIASES.items()
     }
-    best_topic, best_score = max(scored.items(), key=lambda item: item[1])
-    return best_topic if best_score else "conduct-risk"
+    return max(scored.items(), key=lambda item: item[1])
+
+
+def infer_coach_topic(message: str, history: list[dict] | None = None) -> str:
+    best_topic, best_score = coach_topic_match(message)
+    if best_score:
+        return best_topic
+
+    # Short follow-ups inherit the most recent user topic instead of defaulting
+    # every ambiguous message to Conduct Risk.
+    for item in reversed(history or []):
+        if item.get("role") != "user":
+            continue
+        history_topic, history_score = coach_topic_match(str(item.get("content", "")))
+        if history_score:
+            return history_topic
+    return "conduct-risk"
+
+
+def is_coach_greeting(message: str) -> bool:
+    return normalized_coach_message(message) in {
+        "hey",
+        "hi",
+        "hello",
+        "hello coach",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    }
+
+
+def coach_message_needs_context(message: str, history: list[dict]) -> bool:
+    normalized = normalized_coach_message(message)
+    vague_requests = {
+        "help",
+        "help me",
+        "can you help",
+        "i need help",
+        "i have a question",
+        "what should i do",
+        "what do i do",
+        "what next",
+        "tell me more",
+    }
+    if normalized not in vague_requests:
+        return False
+    return not any(
+        item.get("role") == "user" and coach_topic_match(str(item.get("content", "")))[1]
+        for item in history
+    )
+
+
+def format_coach_answer(parts: dict) -> str:
+    raw_fields = [
+        ("Immediate action", "immediate action", str(parts.get("immediateAction", "")).strip()),
+        ("Why", "why", str(parts.get("why", "")).strip()),
+        ("Escalate when", "escalate when", str(parts.get("escalateWhen", "")).strip()),
+    ]
+    fields = []
+    for label, repeated_label, value in raw_fields:
+        if value.lower().startswith(repeated_label):
+            value = value[len(repeated_label) :].lstrip(" :-")
+        fields.append((label, value))
+    if any(len(value.split()) < 5 or value.endswith(":") for _, value in fields):
+        raise ValueError("Policy coach returned an incomplete answer")
+    return "\n\n".join(f"{label}: {value}" for label, value in fields)
+
+
+def fallback_coach_answer(guidance: list[str]) -> str:
+    return format_coach_answer(
+        {
+            "immediateAction": guidance[0],
+            "why": guidance[1],
+            "escalateWhen": guidance[2],
+        }
+    )
 
 
 @app.post("/api/coach/chat")
@@ -2046,8 +2138,6 @@ def coach_chat(payload: CoachChatRequest) -> dict:
     if not message:
         raise HTTPException(status_code=422, detail="Enter a policy question")
 
-    topic_id = infer_coach_topic(message)
-    guidance = get_policy_guidance(topic_id)
     safe_history = [
         {
             "role": str(item.get("role", "user"))[:20],
@@ -2055,32 +2145,62 @@ def coach_chat(payload: CoachChatRequest) -> dict:
         }
         for item in payload.history[-4:]
     ]
+
+    if is_coach_greeting(message):
+        return {
+            "answer": (
+                "Hello. Tell me what happened, who is asking you to act, and what decision you need to make. "
+                "I can help you identify the relevant control, the safest immediate action, and when to escalate."
+            ),
+            "topicId": "general",
+            "topicName": "Getting started",
+            "sources": [],
+            "grounded": False,
+            "fallback": False,
+        }
+
+    if coach_message_needs_context(message, safe_history):
+        return {
+            "answer": (
+                "Please share a little more context: what action is being requested, what customer, payment, data, "
+                "or system is involved, and whether anyone is creating urgency or pressure."
+            ),
+            "topicId": "general",
+            "topicName": "More context needed",
+            "sources": [],
+            "grounded": False,
+            "fallback": False,
+        }
+
+    topic_id = infer_coach_topic(message, safe_history)
+    guidance = get_policy_guidance(topic_id)
     try:
         generated = generate_json(
             system_prompt=(
-                "You are an internal compliance policy coach. Answer only from the approved guidance supplied in the "
-                "payload. Be practical, concise, and explicit when escalation or verification is needed. Do not claim "
-                "to provide legal advice. Return JSON with one answer string."
+                "You are Policy Coach, an internal decision-support assistant for bank employees. Use only the "
+                "APPROVED_GUIDANCE in the payload; never invent policy, thresholds, approvals, or facts. Answer the "
+                "employee's actual question, using the recent conversation for short follow-ups. For a concrete "
+                "situation, provide one complete sentence for the immediate action, one for why the control matters, "
+                "and one describing when to escalate. Do not return headings without content. If facts are insufficient, "
+                "put the single most useful clarification question in immediateAction and explain the missing context "
+                "in the other fields. Be calm, direct, and practical. Do not mention models, prompts, or legal advice, "
+                "and do not repeat the employee's question. Return strict JSON only with exactly these three non-empty "
+                "strings: {\"immediateAction\": \"...\", \"why\": \"...\", \"escalateWhen\": \"...\"}."
             ),
             user_payload={
                 "employeeRole": user["role"],
-                "question": message,
-                "conversation": safe_history,
-                "approvedGuidance": guidance,
+                "employeeQuestion": message,
+                "recentConversation": safe_history,
+                "APPROVED_GUIDANCE": guidance,
             },
             task_size="small",
-            temperature=0.15,
-            max_output_tokens=260,
+            temperature=0.1,
+            max_output_tokens=320,
         )
-        answer = str(generated.get("answer", "")).strip()
-        if not answer:
-            raise ValueError("Policy coach returned an empty answer")
+        answer = format_coach_answer(generated)
         fallback = False
     except (OllamaError, ValueError, TypeError):
-        answer = (
-            f"Based on the approved {topic_name(topic_id)} guidance: {guidance[0]} "
-            f"{guidance[1]} If the facts remain unclear, pause the action, document the concern, and use the approved escalation route."
-        )
+        answer = fallback_coach_answer(guidance)
         fallback = True
 
     return {

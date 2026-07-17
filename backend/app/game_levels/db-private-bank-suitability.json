@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-private-bank-suitability","title":"The Unsuitable Yield Promise","topicId":"conduct-risk","topicName":"Conduct Risk","difficulty":"Intermediate","estimatedMinutes":6,
+  "brief":"A simulated Private Bank client asks for a high-yield product that conflicts with the recorded risk profile and liquidity needs.","objective":"Keep advice fair, clear and aligned with the client's documented needs.","startNodeId":"client-request","navigationMode":"rules",
+  "assignmentRoles":["Relationship Manager","Sales Associate","Finance Analyst"],"assignmentDepartments":["Sales","Finance"],"dueInDays":18,
+  "world":{"room":"Private Bank Advisory Suite","accent":"#5476c7","npc":{"x":660,"y":310},"missionSpot":{"x":7.2,"y":5.3},"scene":{"name":"Private Bank Advisory Suite","backdrop":"#91a4b3","backdropAccent":"#d9e3e9","playerSpawn":{"x":6.1,"y":8.8},
+    "walls":[{"x1":0,"y1":4.3,"x2":5.6,"y2":4.3},{"x1":6.5,"y1":4.3,"x2":14,"y2":4.3},{"x1":9,"y1":0,"x2":9,"y2":3.5}],
+    "rooms":[{"x":1,"y":0.6,"label":"CLIENT ADVICE","accent":"#5476c7"},{"x":9.7,"y":0.6,"label":"PRODUCT REVIEW","accent":"#cc8b35"},{"x":5.2,"y":5.1,"label":"SUITABILITY DESK","accent":"#258f75"}],
+    "furniture":[{"type":"meeting-table","x":1.8,"y":1.6,"accent":"#5476c7"},{"type":"desk","x":9.8,"y":1.7,"accent":"#cc8b35"},{"type":"desk","x":5.6,"y":6.2,"accent":"#258f75"},{"type":"plant","x":3.8,"y":3.2},{"type":"plant","x":12.6,"y":8.7}] }},
+  "nodes":[{"id":"client-request","speaker":"Private Banking Client","message":"I need a guaranteed high return and access to all my money next month. Put me into the product your colleague mentioned today.","prompt":"How do you respond?","artifact":{"type":"email","title":"Client investment request","body":"Recorded profile is conservative with near-term liquidity needs; requested product has material market and lock-up risk."},"choices":[
+    {"id":"reassess-explain","label":"Reassess needs, explain the risks clearly and recommend only suitable options.","scoreDelta":32,"riskDelta":-24,"consequence":"The recommendation process remains client-centred and evidence-based.","nextNodeId":null},
+    {"id":"client-insistence","label":"Proceed because the client explicitly requested it.","scoreDelta":-25,"riskDelta":31,"consequence":"Client insistence is treated as a substitute for suitability assessment.","nextNodeId":null},
+    {"id":"return-language","label":"Describe the return prominently and leave the liquidity risk in the small print.","scoreDelta":-30,"riskDelta":35,"consequence":"The communication is unbalanced and obscures a material client risk.","nextNodeId":null}
+  ]}]
+}

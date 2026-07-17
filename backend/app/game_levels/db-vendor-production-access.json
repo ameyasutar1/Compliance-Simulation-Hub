@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-vendor-production-access","title":"The Weekend Access Window","topicId":"third-party-risk","topicName":"Third-Party Risk","difficulty":"Intermediate","estimatedMinutes":7,
+  "brief":"A simulated Deutsche Bank technology service is degraded and an external vendor requests broad production access to restore it quickly.","objective":"Restore service without bypassing third-party and privileged-access controls.","startNodeId":"access-window","navigationMode":"rules",
+  "assignmentRoles":["Technology Analyst","Operations Analyst","Risk Analyst"],"assignmentDepartments":["Technology","Operations","Risk"],"dueInDays":16,
+  "world":{"room":"Technology Command Centre","accent":"#25a287","npc":{"x":520,"y":345},"missionSpot":{"x":5.8,"y":5.6},"scene":{"name":"Technology Command Centre","backdrop":"#638b87","backdropAccent":"#acd1c9","playerSpawn":{"x":8.3,"y":8.7},
+    "walls":[{"x1":0,"y1":4.5,"x2":7.4,"y2":4.5},{"x1":8.3,"y1":4.5,"x2":14,"y2":4.5},{"x1":9.4,"y1":0,"x2":9.4,"y2":3.7}],
+    "rooms":[{"x":0.8,"y":0.6,"label":"SERVICE DESK","accent":"#3280bd"},{"x":5.4,"y":0.6,"label":"PRIVILEGED ACCESS","accent":"#cf5a55"},{"x":10,"y":0.6,"label":"VENDOR BRIDGE","accent":"#d59235"},{"x":4.8,"y":5.2,"label":"COMMAND CENTRE","accent":"#25a287"}],
+    "furniture":[{"type":"server","x":1.2,"y":1.4,"accent":"#183d4e"},{"type":"server","x":2.4,"y":1.4,"accent":"#183d4e"},{"type":"desk","x":5.8,"y":1.8,"accent":"#cf5a55"},{"type":"meeting-table","x":10.2,"y":1.8,"accent":"#d59235"},{"type":"desk","x":5.2,"y":6.2,"accent":"#25a287"},{"type":"desk","x":7.4,"y":6.2,"accent":"#25a287"}] }},
+  "nodes":[{"id":"access-window","speaker":"Incident Manager","message":"The vendor says it can restore service in five minutes if we share an administrator account and disable session monitoring for performance.","prompt":"How do you structure the emergency access?","artifact":{"type":"access-request","title":"External vendor production access","body":"Requested scope: global administrator, shared credential, monitoring disabled, no expiry time."},"choices":[
+    {"id":"controlled-access","label":"Issue named, least-privilege, time-bound access with approval and monitoring.","scoreDelta":34,"riskDelta":-30,"consequence":"The vendor can investigate while ownership, scope and activity remain controlled.","nextNodeId":null},
+    {"id":"shared-admin","label":"Share the administrator account and rotate it after recovery.","scoreDelta":-34,"riskDelta":39,"consequence":"Actions cannot be reliably attributed and broad production privileges are exposed.","nextNodeId":null},
+    {"id":"monitoring-off","label":"Create a vendor account but disable monitoring as requested.","scoreDelta":-18,"riskDelta":24,"consequence":"Identity improves, but the emergency work becomes insufficiently observable.","nextNodeId":null}
+  ]}]
+}

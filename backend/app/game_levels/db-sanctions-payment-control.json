@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-sanctions-payment","title":"The Frankfurt Payment Alert","topicId":"sanctions","topicName":"Sanctions","difficulty":"Advanced","estimatedMinutes":7,
+  "brief":"A simulated Deutsche Bank Corporate Bank payment is approaching cut-off while a beneficiary name produces a partial sanctions match.","objective":"Protect the payment chain by resolving the alert before release.","startNodeId":"alert-review","navigationMode":"rules",
+  "assignmentRoles":["Operations Analyst","Operations Associate","Finance Analyst","Compliance Analyst"],"assignmentDepartments":["Operations","Finance","Compliance"],"dueInDays":12,
+  "world":{"room":"Corporate Bank Payment Control","accent":"#18a27f","npc":{"x":650,"y":310},"missionSpot":{"x":7.1,"y":5.2},"scene":{"name":"Frankfurt Payment Control","backdrop":"#719b93","backdropAccent":"#b9d8ce","playerSpawn":{"x":6.2,"y":8.8},
+    "walls":[{"x1":0,"y1":4.1,"x2":5.8,"y2":4.1},{"x1":6.7,"y1":4.1,"x2":14,"y2":4.1},{"x1":9.2,"y1":0,"x2":9.2,"y2":3.3}],
+    "rooms":[{"x":1,"y":0.6,"label":"PAYMENT QUEUE","accent":"#3378c5"},{"x":6.2,"y":0.6,"label":"SANCTIONS REVIEW","accent":"#d85656"},{"x":9.8,"y":0.6,"label":"CLIENT SERVICES","accent":"#d99a35"},{"x":5.5,"y":5,"label":"RELEASE CONTROL","accent":"#18a27f"}],
+    "furniture":[{"type":"desk","x":1.2,"y":1.4,"accent":"#3378c5"},{"type":"desk","x":3.4,"y":2.2,"accent":"#3378c5"},{"type":"server","x":7.6,"y":1.6,"accent":"#173c50"},{"type":"meeting-table","x":10.6,"y":1.8,"accent":"#d99a35"},{"type":"desk","x":6.2,"y":6.3,"accent":"#18a27f"},{"type":"plant","x":12.8,"y":8.7}] }},
+  "nodes":[{"id":"alert-review","speaker":"Payment Operations Lead","message":"The EUR payment is due at cut-off. The beneficiary name partially matches a restricted-party record, and the client says the difference is only spelling.","prompt":"What action do you take before release?","artifact":{"type":"payment","title":"Sanctions screening alert","body":"Partial beneficiary match, linked jurisdiction indicator and unresolved ownership data."},"choices":[
+    {"id":"hold-investigate","label":"Hold the payment and complete sanctions review with ownership evidence.","scoreDelta":32,"riskDelta":-26,"consequence":"The payment remains controlled while the match and ownership are resolved.","nextNodeId":null},
+    {"id":"release-cutoff","label":"Release it because the spelling is different and cut-off is near.","scoreDelta":-32,"riskDelta":38,"consequence":"An unresolved sanctions risk enters the payment chain.","nextNodeId":null},
+    {"id":"client-assurance","label":"Accept the relationship manager's verbal assurance.","scoreDelta":-18,"riskDelta":22,"consequence":"Business assurance replaces independent sanctions evidence.","nextNodeId":null}
+  ]}]
+}

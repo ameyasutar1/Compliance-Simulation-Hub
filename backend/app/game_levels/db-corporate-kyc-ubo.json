@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.1","id":"game-db-corporate-kyc-ubo","title":"The Layered Ownership File","topicId":"kyc","topicName":"KYC","difficulty":"Advanced","estimatedMinutes":8,
+  "brief":"A simulated Deutsche Bank Corporate Bank onboarding involves layered entities and an unresolved beneficial owner before a major mandate.","objective":"Complete a risk-based ownership review without allowing commercial urgency to weaken KYC evidence.","startNodeId":"ownership-gap","navigationMode":"rules",
+  "assignmentRoles":["KYC Analyst","Relationship Manager","Compliance Analyst","Operations Analyst"],"assignmentDepartments":["Corporate Bank","Compliance","Operations"],"dueInDays":9,
+  "world":{"room":"Corporate Onboarding Centre","accent":"#d48b35","npc":{"x":740,"y":320},"missionSpot":{"x":8.4,"y":5.1},"scene":{"name":"Corporate Onboarding Centre","backdrop":"#8d997c","backdropAccent":"#d3d9be","playerSpawn":{"x":5.2,"y":8.7},
+    "walls":[{"x1":0,"y1":4.2,"x2":6.5,"y2":4.2},{"x1":7.4,"y1":4.2,"x2":14,"y2":4.2},{"x1":4.8,"y1":0,"x2":4.8,"y2":3.4},{"x1":9.5,"y1":0,"x2":9.5,"y2":3.4}],
+    "rooms":[{"x":0.8,"y":0.6,"label":"DOCUMENT INTAKE","accent":"#3978bb"},{"x":5.2,"y":0.6,"label":"OWNERSHIP REVIEW","accent":"#d48b35"},{"x":10,"y":0.6,"label":"RELATIONSHIP DESK","accent":"#5e73c6"},{"x":5.8,"y":5,"label":"KYC DECISION","accent":"#279276"}],
+    "furniture":[{"type":"desk","x":1.1,"y":1.6,"accent":"#3978bb"},{"type":"server","x":3.2,"y":1.4,"accent":"#233e51"},{"type":"meeting-table","x":5.3,"y":1.7,"accent":"#d48b35"},{"type":"desk","x":10.3,"y":1.8,"accent":"#5e73c6"},{"type":"desk","x":6.1,"y":6.1,"accent":"#279276"},{"type":"plant","x":12.7,"y":8.5}] }},
+  "nodes":[{"id":"ownership-gap","speaker":"Corporate Onboarding Lead","message":"The client supplied a registry extract, but ownership runs through two offshore entities and the final natural-person owner is not verified. The mandate is expected today.","prompt":"What is the onboarding decision?","artifact":{"type":"email","title":"Priority corporate onboarding","body":"Commercial approval is complete. Beneficial ownership evidence remains incomplete for the final layer."},"choices":[
+    {"id":"resolve-ubo","label":"Pause activation, verify the ownership chain and escalate unresolved risk.","scoreDelta":35,"riskDelta":-30,"consequence":"The mandate remains pending until accountable ownership is evidenced and reviewed.","nextNodeId":null},
+    {"id":"onboard-conditionally","label":"Activate the account and collect ownership evidence after the first payment.","scoreDelta":-35,"riskDelta":40,"consequence":"The relationship becomes active before a foundational KYC risk is resolved.","nextNodeId":null},
+    {"id":"registry-only","label":"Treat the first registry extract as sufficient because it is official.","scoreDelta":-20,"riskDelta":26,"consequence":"The document confirms an entity but does not resolve the ultimate beneficial owner.","nextNodeId":null}
+  ]}]
+}
