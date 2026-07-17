@@ -1,4 +1,4 @@
-import React, { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { lazy, startTransition, Suspense, useDeferredValue, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -15,8 +15,8 @@ import {
   Flag,
   Flame,
   Gauge,
+  Gamepad2,
   GraduationCap,
-  Home,
   LayoutGrid,
   LockKeyhole,
   Mail,
@@ -38,50 +38,71 @@ import {
 import { api } from './api';
 import './styles.css';
 
-const NAV = [
-  ['Home', Home],
-  ['Daily Challenge', Flame],
-  ['Simulations', Play],
-  ['Red Flag Lab', Flag],
-  ['Investigations', FileSearch],
-  ['Pressure Tests', Gauge],
-  ['Compliance Coach', Brain],
+const GameMissionHub = lazy(() => import('./game/GameMissionHub'));
+
+const PRIMARY_NAV = [
+  ['My Training', GraduationCap],
+  ['Scenario Library', Gamepad2],
   ['My Learning', BarChart3],
+  ['Policy Coach', Brain],
+];
+
+const SUPPORT_NAV = [
+  ['Daily Challenge', Flame],
+  ['Legacy Scenarios', Play],
   ['Achievements', Trophy],
-  ['Scenario Library', LayoutGrid],
 ];
 
 const PAGE_INFO = {
-  Home: ['Compliance Simulation Hub', 'Train judgement through realistic compliance decisions.'],
-  'Daily Challenge': ['Daily Challenge', 'A short exercise mapped to today and your current learning needs.'],
-  Simulations: ['Scenario Simulations', 'Branch through realistic cases, consequences and replay paths.'],
-  'Red Flag Lab': ['Red Flag Lab', 'Spot suspicious wording before it becomes a control failure.'],
-  Investigations: ['Investigation Mode', 'Review evidence, build a case and choose a defensible outcome.'],
-  'Pressure Tests': ['Pressure Tests', 'Stay principled when the clock, client or hierarchy is pushing back.'],
-  'Compliance Coach': ['Compliance Coach', 'Browse predefined, rule-based compliance explanations and reminders.'],
-  'My Learning': ['My Learning', 'Track topic scores, progress, gaps and next-best training actions.'],
-  Achievements: ['Achievements', 'Professional gamification that rewards learning discipline and improvement.'],
-  'Scenario Library': ['Scenario Library', 'Browse all available training activities with filters and completion history.'],
-  'Manager Dashboard': ['Manager Dashboard', 'See aggregate learning performance, gaps and recommended campaigns.'],
+  'My Training': ['My Training', 'Complete the interactive compliance training assigned to your role.'],
+  'Mission Hub': ['Training Level', 'Explore the environment, meet characters, and complete your assigned compliance mission.'],
+  'Daily Challenge': ['Daily Drill', 'Complete a short deterministic drill that reinforces today’s focus area.'],
+  'Legacy Scenarios': ['Legacy Scenarios', 'Replay the seeded branching scenarios that remain available as support training.'],
+  'Policy Coach': ['Policy Coach', 'Ask policy questions and receive concise answers grounded in approved guidance.'],
+  'My Learning': ['My Learning', 'Track topic performance, progress trends, gaps, and next-best practice.'],
+  Achievements: ['Achievements', 'Recognize learning discipline, consistency, and earned milestones.'],
+  'Scenario Library': ['Scenario Library', 'Browse and launch interactive compliance game levels.'],
+  'Manager Insights': ['Manager Insights', 'Review aggregate team patterns, weak topics, and campaign opportunities.'],
   Settings: ['Settings', 'Manage reminders, focus preferences and demo reset controls.'],
 };
 
 const TYPE_TO_PAGE = {
-  simulation: 'Simulations',
+  'game-mission': 'Mission Hub',
+  simulation: 'Legacy Scenarios',
   'daily-challenge': 'Daily Challenge',
-  'red-flag': 'Red Flag Lab',
-  investigation: 'Investigations',
-  'pressure-test': 'Pressure Tests',
 };
 
+const ACTIVE_AI_SESSION_KEY = 'compliance-ai-session-id';
+
+const AI_TOPICS = [
+  { id: 'aml', name: 'AML' },
+  { id: 'kyc', name: 'KYC' },
+  { id: 'data-privacy', name: 'Data Privacy' },
+  { id: 'sanctions', name: 'Sanctions' },
+  { id: 'market-abuse', name: 'Market Abuse' },
+  { id: 'conduct-risk', name: 'Conduct Risk' },
+  { id: 'information-security', name: 'Information Security' },
+  { id: 'third-party-risk', name: 'Third-Party Risk' },
+  { id: 'conflicts', name: 'Conflicts of Interest' },
+  { id: 'regulatory-reporting', name: 'Regulatory Reporting' },
+];
+
+const AI_DIFFICULTIES = [
+  { id: 'starter', label: 'Starter' },
+  { id: 'standard', label: 'Standard' },
+  { id: 'challenging', label: 'Challenging' },
+];
+
 function App() {
-  const [page, setPage] = useState('Home');
+  const [page, setPage] = useState('My Training');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [toast, setToast] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [deepLink, setDeepLink] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [selectedGameId, setSelectedGameId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +140,30 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!user) {
+      setAiStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    api.getAiStatus()
+      .then((response) => {
+        if (!cancelled) {
+          setAiStatus(response);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAiStatus({ status: 'unavailable', detail: err.message });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, refreshKey]);
+
   const navigate = (nextPage) => {
     startTransition(() => {
       setPage(nextPage);
@@ -130,15 +175,16 @@ function App() {
     const response = await api.login(userId);
     window.localStorage.setItem('compliance-user-id', userId);
     setUser(response.user);
-    setPage(response.user.isManager ? 'Manager Dashboard' : 'Home');
+    setPage('My Training');
     setToast(`Signed in as ${response.user.name}`);
   };
 
   const handleLogout = () => {
     window.localStorage.removeItem('compliance-user-id');
     setUser(null);
-    setPage('Home');
+    setPage('My Training');
     setDeepLink(null);
+    setAiStatus(null);
   };
 
   const handleActivityComplete = (message) => {
@@ -152,6 +198,9 @@ function App() {
     const nextPage = TYPE_TO_PAGE[activity.type];
     if (!nextPage) {
       return;
+    }
+    if (activity.type === 'game-mission') {
+      setSelectedGameId(activity.id);
     }
     setDeepLink(activity);
     navigate(nextPage);
@@ -172,7 +221,7 @@ function App() {
     );
   }
 
-  const [title, subtitle] = PAGE_INFO[page] || PAGE_INFO.Home;
+  const [title, subtitle] = PAGE_INFO[page] || PAGE_INFO['My Training'];
 
   return (
     <div className="app">
@@ -180,6 +229,7 @@ function App() {
         mobileOpen={mobileOpen}
         page={page}
         user={user}
+        aiStatus={aiStatus}
         onClose={() => setMobileOpen(false)}
         onLogout={handleLogout}
         onNavigate={navigate}
@@ -209,13 +259,18 @@ function App() {
           </div>
         </header>
         <section className="content">
-          {page === 'Home' && (
-            <DashboardPage
-              key={`home-${refreshKey}`}
-              user={user}
-              onLaunch={handleLaunch}
-              onNavigate={navigate}
-            />
+          {page === 'My Training' && (
+            <TrainingHomePage key={`training-${refreshKey}`} user={user} onLaunch={handleLaunch} />
+          )}
+          {page === 'Mission Hub' && (
+            <Suspense fallback={<LoadingCard label="Loading interactive mission hub" />}>
+              <GameMissionHub
+                key={`game-${refreshKey}`}
+                user={user}
+                initialScenarioId={selectedGameId}
+                onComplete={() => setToast('Game mission completed and learning progress saved.')}
+              />
+            </Suspense>
           )}
           {page === 'Daily Challenge' && (
             <DailyChallengePage
@@ -227,7 +282,7 @@ function App() {
               clearDeepLink={clearDeepLink}
             />
           )}
-          {page === 'Simulations' && (
+          {page === 'Legacy Scenarios' && (
             <SimulationsPage
               key={`sim-${refreshKey}`}
               user={user}
@@ -237,44 +292,17 @@ function App() {
               onNavigate={navigate}
             />
           )}
-          {page === 'Red Flag Lab' && (
-            <RedFlagPage
-              key={`flag-${refreshKey}`}
-              user={user}
-              onComplete={() => handleActivityComplete('Red flag results saved.')}
-              deepLink={deepLink}
-              clearDeepLink={clearDeepLink}
-            />
-          )}
-          {page === 'Investigations' && (
-            <InvestigationPage
-              key={`invest-${refreshKey}`}
-              user={user}
-              onComplete={() => handleActivityComplete('Investigation outcome saved.')}
-              deepLink={deepLink}
-              clearDeepLink={clearDeepLink}
-            />
-          )}
-          {page === 'Pressure Tests' && (
-            <PressurePage
-              key={`pressure-${refreshKey}`}
-              user={user}
-              onComplete={() => handleActivityComplete('Pressure test recorded.')}
-              deepLink={deepLink}
-              clearDeepLink={clearDeepLink}
-            />
-          )}
-          {page === 'Compliance Coach' && <CoachPage />}
+          {page === 'Policy Coach' && <CoachPage user={user} />}
           {page === 'My Learning' && <LearningPage key={`learning-${refreshKey}`} user={user} onLaunch={handleLaunch} />}
           {page === 'Achievements' && <AchievementsPage key={`badges-${refreshKey}`} user={user} />}
           {page === 'Scenario Library' && (
-            <LibraryPage
+            <GameLibraryPage
               key={`library-${refreshKey}`}
               user={user}
               onLaunch={handleLaunch}
             />
           )}
-          {page === 'Manager Dashboard' && user.isManager && <ManagerPage key={`manager-${refreshKey}`} />}
+          {page === 'Manager Insights' && user.isManager && <ManagerPage key={`manager-${refreshKey}`} />}
           {page === 'Settings' && (
             <SettingsPage
               user={user}
@@ -342,14 +370,14 @@ function LoginScreen({ onLogin }) {
         <div className="login-brand">
           <div className="brand-mark"><ShieldAlert size={20} /></div>
           <div>
-            <span>Compliance Simulation Hub</span>
-            <strong>Static Rule-Based Prototype</strong>
+            <span>Compliance AI Workspace</span>
+            <strong>Live Simulation Environment</strong>
           </div>
         </div>
-        <h1>Practise compliance decisions, not just policy recall.</h1>
+        <h1>Train real compliance judgment inside a live AI workspace.</h1>
         <p>
-          Enter realistic workplace pressure, make the call, see the consequence, and let the
-          rule-based learning engine update your profile.
+          Launch high-pressure scenarios, respond in free text, review generated evidence, and build
+          better escalation habits through consequence-based training.
         </p>
         {loading ? (
           <LoadingCard label="Loading seeded users" />
@@ -380,23 +408,23 @@ function LoginScreen({ onLogin }) {
             {error && <ErrorNotice message={error} />}
             <button className="primary wide" disabled={submitting || !selectedUserId}>
               <Play size={16} />
-              {submitting ? 'Signing in...' : 'Enter prototype'}
+              {submitting ? 'Signing in...' : 'Enter AI workspace'}
             </button>
           </form>
         )}
       </div>
       <div className="login-showcase">
         <div className="hero card">
-          <span className="eyebrow"><Sparkles size={14} /> RULE-BASED LEARNING LOOP</span>
-          <h2>Practise. Decide. Learn. Reinforce.</h2>
+          <span className="eyebrow"><Sparkles size={14} /> AI-FIRST COMPLIANCE OPERATIONS</span>
+          <h2>Simulate the pressure before it becomes an incident.</h2>
           <p>
-            Static scenarios, deterministic scoring, replay insights, activity history, coach answers,
-            and manager-level gaps are all wired through APIs so future AI modules can swap in cleanly.
+            The platform now leads with live AI simulation while preserving support drills, policy
+            guidance, and manager-level insight views around the main workspace.
           </p>
           <div className="hero-meta">
-            <span><Brain size={15} /> No AI in V1</span>
-            <span><BarChart3 size={15} /> SQLite persistence</span>
-            <span><ShieldCheck size={15} /> Manager aggregate views</span>
+            <span><Brain size={15} /> Live AI simulations</span>
+            <span><BarChart3 size={15} /> Persistent training history</span>
+            <span><ShieldCheck size={15} /> Policy-grounded support tools</span>
           </div>
         </div>
       </div>
@@ -404,21 +432,29 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-function Sidebar({ mobileOpen, onClose, onNavigate, onLogout, page, user }) {
+function Sidebar({ mobileOpen, onClose, onNavigate, onLogout, page, user, aiStatus }) {
   return (
     <aside className={mobileOpen ? 'sidebar open' : 'sidebar'}>
       <div className="brand">
         <div className="brand-mark"><ShieldAlert size={18} /></div>
         <div>
-          <span>Compliance</span>
-          <strong>Simulation Hub</strong>
+          <span>Compliance AI</span>
+          <strong>Workspace</strong>
         </div>
         <button className="icon mobile-close" onClick={onClose}>
           <X />
         </button>
       </div>
       <div className="nav">
-        {NAV.map(([label, Icon]) => (
+        <div className="nav-label">WORKSPACE</div>
+        {PRIMARY_NAV.map(([label, Icon]) => (
+          <button key={label} className={page === label ? 'active' : ''} onClick={() => onNavigate(label)}>
+            <Icon size={18} />
+            <span>{label}</span>
+          </button>
+        ))}
+        <div className="nav-label">SUPPORT TOOLS</div>
+        {SUPPORT_NAV.map(([label, Icon]) => (
           <button key={label} className={page === label ? 'active' : ''} onClick={() => onNavigate(label)}>
             <Icon size={18} />
             <span>{label}</span>
@@ -427,9 +463,9 @@ function Sidebar({ mobileOpen, onClose, onNavigate, onLogout, page, user }) {
         {user.isManager && (
           <>
             <div className="nav-label">LEADERSHIP</div>
-            <button className={page === 'Manager Dashboard' ? 'active' : ''} onClick={() => onNavigate('Manager Dashboard')}>
+            <button className={page === 'Manager Insights' ? 'active' : ''} onClick={() => onNavigate('Manager Insights')}>
               <Users size={18} />
-              <span>Manager Dashboard</span>
+              <span>Manager Insights</span>
             </button>
           </>
         )}
@@ -452,53 +488,439 @@ function Sidebar({ mobileOpen, onClose, onNavigate, onLogout, page, user }) {
   );
 }
 
-function DashboardPage({ user, onLaunch, onNavigate }) {
+function TrainingHomePage({ user, onLaunch }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.getTrainingAssignments(user.id).then(setData).catch((err) => setError(err.message));
+  }, [user.id]);
+
+  if (error) return <ErrorNotice message={error} />;
+  if (!data) return <LoadingCard label="Loading assigned training" />;
+
+  return (
+    <div className="training-home">
+      <section className="training-hero">
+        <div>
+          <span className="eyebrow"><GraduationCap size={14} /> EMPLOYEE TRAINING PLAN</span>
+          <h2>Welcome back, {user.name.split(' ')[0]}</h2>
+          <p>Complete the game-based compliance training assigned to your role. Each level reacts to your decisions and records the outcome in My Learning.</p>
+        </div>
+        <div className="training-summary">
+          <div><strong>{data.summary.pending}</strong><span>Pending</span></div>
+          <div><strong>{data.summary.completed}</strong><span>Completed</span></div>
+          <div><strong>{data.summary.assigned}</strong><span>Assigned</span></div>
+        </div>
+      </section>
+
+      <div className="training-section-head">
+        <div>
+          <span className="eyebrow">REQUIRED TRAINING</span>
+          <h3>Your pending levels</h3>
+        </div>
+        <span className="tag amber">{data.summary.pending} remaining</span>
+      </div>
+
+      {data.pending.length ? (
+        <div className="training-assignment-grid">
+          {data.pending.map((training, index) => (
+            <article className="training-assignment-card" key={training.id}>
+              <div className="training-card-index">{String(index + 1).padStart(2, '0')}</div>
+              <div className="training-card-copy">
+                <div className="training-card-tags">
+                  <span>{training.topicName}</span>
+                  <span>{training.difficulty}</span>
+                  {training.navigationMode === 'ai-assisted' && <span className="ai-route-tag">Adaptive path</span>}
+                </div>
+                <h3>{training.title}</h3>
+                <p>{training.brief}</p>
+                <div className="training-card-meta">
+                  <span><Clock3 size={14} /> {training.estimatedMinutes} min</span>
+                  <span><Target size={14} /> Due in {training.dueInDays} days</span>
+                  <span><LayoutGrid size={14} /> {training.world.scene?.name || training.world.room}</span>
+                </div>
+              </div>
+              <button className="primary training-start" onClick={() => onLaunch({ id: training.id, type: 'game-mission' })}>
+                Start training <ArrowRight size={17} />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="card training-empty">
+          <ShieldCheck size={30} />
+          <h3>All assigned training is complete</h3>
+          <p>Replay a level from Scenario Library or review your results in My Learning.</p>
+        </div>
+      )}
+
+      {data.completed.length > 0 && (
+        <section className="card completed-training-strip">
+          <div>
+            <span className="eyebrow">RECENTLY COMPLETED</span>
+            <h3>Completed game levels</h3>
+          </div>
+          <div className="completed-training-list">
+            {data.completed.slice(0, 4).map((training) => (
+              <button key={training.id} onClick={() => onLaunch({ id: training.id, type: 'game-mission' })}>
+                <Check size={15} />
+                <span><b>{training.title}</b><small>Best score {training.bestScore}%</small></span>
+                <Play size={14} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function AIWorkspacePage({ user, onLaunch, onNavigate, aiStatus }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [topicId, setTopicId] = useState('data-privacy');
+  const [difficulty, setDifficulty] = useState('standard');
+  const [starting, setStarting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [composer, setComposer] = useState('');
+  const [activeSession, setActiveSession] = useState(null);
+  const [resumeSession, setResumeSession] = useState(null);
+  const [resumeLoading, setResumeLoading] = useState(true);
 
   useEffect(() => {
     api.getDashboard(user.id).then(setData).catch((err) => setError(err.message));
   }, [user.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const storedSessionId = window.localStorage.getItem(ACTIVE_AI_SESSION_KEY);
+    if (!storedSessionId) {
+      setResumeLoading(false);
+      return undefined;
+    }
+
+    api.getAiSimulation(storedSessionId, user.id)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        if (response.session.status === 'completed') {
+          window.localStorage.removeItem(ACTIVE_AI_SESSION_KEY);
+          setResumeSession(null);
+          return;
+        }
+        setResumeSession(response);
+      })
+      .catch(() => {
+        window.localStorage.removeItem(ACTIVE_AI_SESSION_KEY);
+        if (!cancelled) {
+          setResumeSession(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setResumeLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
+
+  const models = aiStatus?.models || [];
+  const smallReady = models.some((model) => model.name === aiStatus?.smallModel);
+  const largeReady = models.some((model) => model.name === aiStatus?.largeModel);
+  const aiReady = aiStatus?.status === 'ok' && smallReady && largeReady;
+
+  const startSimulation = async () => {
+    setStarting(true);
+    setError('');
+    try {
+      const response = await api.startAiSimulation({
+        userId: user.id,
+        topicId,
+        difficulty,
+        sessionType: 'simulation',
+      });
+      setActiveSession(response);
+      setResumeSession(response);
+      setComposer('');
+      window.localStorage.setItem(ACTIVE_AI_SESSION_KEY, response.session.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const submitTurn = async (closeSession = false) => {
+    if (!activeSession || !composer.trim()) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      const response = await api.submitAiSimulationTurn(activeSession.session.id, {
+        userId: user.id,
+        learnerResponse: composer.trim(),
+        closeSession,
+      });
+      setActiveSession(response);
+      setComposer('');
+      if (response.session.status === 'completed') {
+        setResumeSession(null);
+        window.localStorage.removeItem(ACTIVE_AI_SESSION_KEY);
+      } else {
+        setResumeSession(response);
+        window.localStorage.setItem(ACTIVE_AI_SESSION_KEY, response.session.id);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const clearLiveView = () => {
+    setActiveSession(null);
+    setComposer('');
+  };
+
   if (error) return <ErrorNotice message={error} />;
-  if (!data) return <LoadingCard label="Loading dashboard" />;
+  if (!data) return <LoadingCard label="Loading AI workspace" />;
+
+  const sessionBundle = activeSession;
+  const session = sessionBundle?.session;
+  const turns = sessionBundle?.turns || [];
+  const sessionState = session?.state || null;
+  const latestEvaluation = sessionState?.lastEvaluation
+    || [...turns].reverse().find((turn) => turn.evaluation)?.evaluation
+    || null;
+  const topicLabel = topicNameFromId(sessionState?.topicId || topicId);
+  const liveArtifact = sessionState?.artifact;
 
   return (
     <>
-      <div className="hero">
+      <div className="hero workspace-hero">
         <div className="hero-orb" />
-        <span className="eyebrow"><Sparkles size={14} /> TODAY'S 5-MINUTE CHALLENGE</span>
+        <span className="eyebrow"><Sparkles size={14} /> LIVE AI COMPLIANCE ORCHESTRATION</span>
         <h2>{data.greeting}</h2>
-        <p>{data.dailyChallenge.title}</p>
+        <p>Start a policy-grounded simulation, respond in free text, and work through consequences, evidence, and escalation choices in one workspace.</p>
         <div className="hero-meta">
-          <span><Clock3 size={15} /> {data.dailyChallenge.estimatedMinutes} min</span>
-          <span><Target size={15} /> {data.dailyChallenge.topic}</span>
-          <span><ShieldCheck size={15} /> {data.currentLearningFocus.name}: {data.currentLearningFocus.label}</span>
+          <span><Brain size={15} /> {aiReady ? 'AI simulation ready' : 'Fallback mode available'}</span>
+          <span><Clock3 size={15} /> Daily drill: {data.dailyChallenge.estimatedMinutes} min</span>
+          <span><Target size={15} /> Current focus: {data.currentLearningFocus.name}</span>
         </div>
         <div className="hero-actions">
-          <button className="primary" onClick={() => onLaunch({ id: data.dailyChallenge.id, type: 'daily-challenge' })}>
-            <Play size={16} />
-            Start challenge
+          <button className="primary" onClick={startSimulation} disabled={!aiReady || starting}>
+            <Sparkles size={16} />
+            {starting ? 'Launching simulation...' : 'Start AI simulation'}
           </button>
-          <button className="outline ghost" onClick={() => onNavigate('My Learning')}>
-            View learning profile
+          <button className="outline ghost" onClick={() => onNavigate('Scenario Library')}>
+            Browse activity library
           </button>
         </div>
       </div>
 
+      {aiStatus?.status !== 'ok' && (
+        <div className="workspace-banner workspace-banner-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <b>AI workspace is currently in fallback mode.</b>
+            <span>{aiStatus?.detail || 'Ollama is unavailable, so live simulation start is disabled. Support tools remain usable.'}</span>
+          </div>
+        </div>
+      )}
+
+      {!sessionBundle ? (
+        <div className="workspace-launch-grid">
+          <article className="card workspace-launch-card">
+            <div className="workspace-head">
+              <div>
+                <span className="eyebrow">AI WORKSPACE OVERVIEW</span>
+                <h3>Launch the next live scenario</h3>
+              </div>
+              <span className={aiReady ? 'tag green' : 'tag red'}>{aiReady ? 'Live AI' : 'Fallback Mode'}</span>
+            </div>
+            <p className="workspace-intro">
+              Choose a topic and challenge level, then let the simulation engine create the next case, actor message, and artifact pack in real time.
+            </p>
+            <div className="workspace-form-grid">
+              <label>
+                <span>Topic</span>
+                <select value={topicId} onChange={(event) => setTopicId(event.target.value)}>
+                  {AI_TOPICS.map((topic) => (
+                    <option key={topic.id} value={topic.id}>{topic.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Difficulty</span>
+                <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>
+                  {AI_DIFFICULTIES.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="workspace-actions">
+              <button className="primary" onClick={startSimulation} disabled={!aiReady || starting}>
+                <Sparkles size={16} />
+                {starting ? 'Launching simulation...' : 'Start AI simulation'}
+              </button>
+              <button className="outline" onClick={() => onLaunch({ id: data.dailyChallenge.id, type: 'daily-challenge' })}>
+                <Flame size={16} />
+                Open daily drill
+              </button>
+            </div>
+            {resumeLoading ? (
+              <div className="workspace-inline-note">Checking for an active AI session...</div>
+            ) : resumeSession ? (
+              <div className="resume-card">
+                <div>
+                  <span className="eyebrow">RESUME ACTIVE SIMULATION</span>
+                  <b>{resumeSession.session.state.title}</b>
+                  <p>{topicNameFromId(resumeSession.session.topicId)} · {difficultyLabel(resumeSession.session.difficulty)} · {resumeSession.session.state.turnCount || resumeSession.turns.length} turns</p>
+                </div>
+                <button className="outline" onClick={() => setActiveSession(resumeSession)}>
+                  Resume active simulation
+                </button>
+              </div>
+            ) : (
+              <div className="workspace-inline-note">No active AI session is waiting to be resumed.</div>
+            )}
+          </article>
+        </div>
+      ) : (
+        <div className="workspace-session-layout">
+          <div className="workspace-stream">
+            <div className="workspace-session-head">
+              <div className="workspace-session-copy">
+                <span className="eyebrow">LIVE SESSION</span>
+                <h3>{sessionState?.title}</h3>
+                <p>{sessionState?.summary}</p>
+              </div>
+              <div className="tag-row left workspace-session-tags">
+                <span className="tag violet">{topicLabel}</span>
+                <span className="tag">{difficultyLabel(session?.difficulty)}</span>
+                <span className={session?.status === 'completed' ? 'tag green' : 'tag blue'}>{session?.status === 'completed' ? 'Completed' : 'In progress'}</span>
+              </div>
+            </div>
+
+            <article className="card workspace-casefile">
+              <div className="workspace-case-grid">
+                <div>
+                  <span className="eyebrow">CURRENT EVENT</span>
+                  <h4>{sessionState?.currentSituation?.speaker}</h4>
+                  <p className="workspace-message">{sessionState?.currentSituation?.message}</p>
+                </div>
+                <div className="workspace-case-meta">
+                  <div><strong>Channel</strong><span>{sessionState?.currentSituation?.channel}</span></div>
+                  <div><strong>Location</strong><span>{sessionState?.currentSituation?.location}</span></div>
+                  <div><strong>Time</strong><span>{sessionState?.currentSituation?.time}</span></div>
+                </div>
+              </div>
+              {liveArtifact && (
+                <div className="artifact-card">
+                  <div className="artifact-head">
+                    <span className="eyebrow">GENERATED ARTIFACT</span>
+                    <span className="tag">{liveArtifact.type}</span>
+                  </div>
+                  <h4>{liveArtifact.title}</h4>
+                  <p>{liveArtifact.content}</p>
+                </div>
+              )}
+            </article>
+
+            <div className="timeline-list">
+              {turns.map((turn) => (
+                <TimelineTurn key={turn.id} turn={turn} />
+              ))}
+            </div>
+          </div>
+
+          <aside className="card workspace-rail">
+            <div className="workspace-rail-section">
+              <span className="eyebrow">YOUR RESPONSE</span>
+              <h3>{sessionState?.responsePrompt || 'What would you do next?'}</h3>
+              <textarea
+                value={composer}
+                onChange={(event) => setComposer(event.target.value)}
+                placeholder="Describe the action you would take, the control you would apply, and whether you would escalate."
+                disabled={session?.status === 'completed'}
+              />
+              <div className="workspace-actions vertical">
+                <button className="primary full" disabled={!composer.trim() || submitting || session?.status === 'completed'} onClick={() => submitTurn(false)}>
+                  <Send size={16} />
+                  {submitting ? 'Sending response...' : 'Send response'}
+                </button>
+                <button className="outline full" disabled={!composer.trim() || submitting || session?.status === 'completed'} onClick={() => submitTurn(true)}>
+                  Finalize with this response
+                </button>
+                <button className="outline full" onClick={clearLiveView}>
+                  Back to workspace overview
+                </button>
+              </div>
+            </div>
+
+            <div className="workspace-rail-section">
+              <span className="eyebrow">SESSION METADATA</span>
+              <div className="status-list compact">
+                <StatusListItem label="Turn count" value={`${turns.length}`} tone="violet" />
+                <StatusListItem label="Topic" value={topicLabel} tone="green" />
+                <StatusListItem label="Difficulty" value={difficultyLabel(session?.difficulty)} tone="blue" />
+              </div>
+            </div>
+
+            <div className="workspace-rail-section">
+              <span className="eyebrow">RISK SIGNALS</span>
+              <div className="tag-row left">
+                {(sessionState?.riskSignals || []).map((signal) => <span className="tag amber" key={signal}>{signal}</span>)}
+              </div>
+              <div className="workspace-mini-section">
+                <span className="eyebrow">LEARNING OBJECTIVES</span>
+                {(sessionState?.learningObjectives || []).map((objective) => (
+                  <div key={objective} className="workspace-bullet">{objective}</div>
+                ))}
+              </div>
+            </div>
+
+            {latestEvaluation && (
+              <div className="workspace-rail-section evaluation-card">
+                <span className="eyebrow">LATEST EVALUATION</span>
+                <div className="evaluation-score">
+                  <strong>{latestEvaluation.score}%</strong>
+                  <span>{latestEvaluation.label}</span>
+                </div>
+                <InsightMini title="Strengths" items={latestEvaluation.strengths} />
+                <InsightMini title="Gaps" items={latestEvaluation.gaps} />
+                <InsightMini title="Policy reasoning" items={latestEvaluation.policyReasoning} />
+                <div className="workspace-mini-section">
+                  <span className="eyebrow">RECOMMENDED ACTION</span>
+                  <p>{latestEvaluation.recommendedAction}</p>
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
       <div className="stats">
         <MetricCard icon={Target} color="green" value={`${data.learningSummary.overallScore}%`} label="Learning score" />
         <MetricCard icon={Flame} color="amber" value={`${data.learningSummary.streak}`} label="Current streak" />
-        <MetricCard icon={ClipboardIcon} color="blue" value={`${data.learningSummary.scenariosCompleted}`} label="Scenario completions" />
-        <MetricCard icon={Award} color="violet" value={`${data.learningSummary.badgesEarned}`} label="Badges earned" />
+        <MetricCard icon={ClipboardIcon} color="blue" value={`${data.learningSummary.scenariosCompleted}`} label="Completed exercises" />
+        <MetricCard icon={Award} color="violet" value={`${data.learningSummary.badgesEarned}`} label="Milestones earned" />
       </div>
 
       <div className="dashboard-grid">
         <article className="card progress-card">
           <div className="card-head">
             <div>
-              <span className="eyebrow">LEARNING FOCUS</span>
-              <h3>Topic reinforcement</h3>
+              <span className="eyebrow">WORKSPACE FOCUS</span>
+              <h3>Priority reinforcement areas</h3>
             </div>
           </div>
           <div className="topic-list">
@@ -514,36 +936,34 @@ function DashboardPage({ user, onLaunch, onNavigate }) {
         <article className="card activity">
           <div className="card-head">
             <div>
-              <span className="eyebrow">RULE-BASED RECOMMENDATIONS</span>
-              <h3>What to do next</h3>
+              <span className="eyebrow">NEXT BEST ACTIONS</span>
+              <h3>Support tools and follow-ups</h3>
             </div>
           </div>
           {data.recommendations.map((rec) => (
-            <button key={rec.id} className="activity-row action-row" onClick={() => onLaunch({ id: rec.activityId, type: rec.activityType })}>
-              <div className="dot violet" />
-              <div>
-                <b>{rec.title}</b>
-                <span>{rec.reason}</span>
-              </div>
-              <ArrowRight size={16} />
-            </button>
+            <RecommendationCard
+              key={rec.id}
+              title={rec.title}
+              reason={rec.reason}
+              onClick={() => onLaunch({ id: rec.activityId, type: rec.activityType })}
+            />
           ))}
         </article>
       </div>
 
-      <h3 className="section-title">Choose your training mode</h3>
+      <h3 className="section-title">Support modules</h3>
       <div className="mode-grid">
         {data.trainingModes.map((mode) => (
-          <button key={mode.id} className="mode card" onClick={() => onNavigate(mode.id)}>
+          <button key={mode.id} className="mode card" onClick={() => onNavigate(normalizePageName(mode.id))}>
             <div className="mode-icon violet"><Play size={18} /></div>
             <b>{mode.label}</b>
             <span>{mode.description}</span>
-            <span className="arrow">Explore</span>
+            <span className="arrow">Open support tool</span>
           </button>
         ))}
       </div>
 
-      <h3 className="section-title">Recent activity</h3>
+      <h3 className="section-title">Recent training activity</h3>
       <div className="card activity log-card">
         {data.recentActivity.map((entry) => (
           <div key={entry.id} className="activity-row">
@@ -605,7 +1025,7 @@ function DailyChallengePage({ user, onComplete, onNavigate, deepLink, clearDeepL
       <ReportPanel
         report={report}
         onReplay={loadChallenge}
-        onHome={() => onNavigate('Home')}
+        onHome={() => onNavigate('My Training')}
       />
     );
   }
@@ -630,7 +1050,7 @@ function DailyChallengePage({ user, onComplete, onNavigate, deepLink, clearDeepL
         <article key={question.id} className="card question-card">
           <div className="card-head">
             <div>
-              <span className="eyebrow">DECISION {index + 1}</span>
+              <span className="eyebrow">DAILY DRILL {index + 1}</span>
               <h3>{question.prompt}</h3>
             </div>
           </div>
@@ -723,7 +1143,7 @@ function SimulationsPage({ user, onComplete, deepLink, clearDeepLink, onNavigate
       <ReportPanel
         report={report}
         onReplay={() => handleStart(report.activityId)}
-        onHome={() => onNavigate('Home')}
+        onHome={() => onNavigate('My Training')}
       />
     );
   }
@@ -735,7 +1155,7 @@ function SimulationsPage({ user, onComplete, deepLink, clearDeepLink, onNavigate
         <div className="simulation-topbar">
           <button className="back" onClick={() => setActive(null)}>← Back to simulations</button>
           <div className="simulation-status">
-            <span className="eyebrow">Live simulation</span>
+            <span className="eyebrow">Legacy scenario</span>
             <div className="tag-row">
               <span className="tag violet">{active.scenario.topicNames.join(' · ')}</span>
               <span className="tag">{active.scenario.difficulty}</span>
@@ -853,8 +1273,8 @@ function SimulationsPage({ user, onComplete, deepLink, clearDeepLink, onNavigate
       <div className="banner">
         <Brain />
         <div>
-          <b>Six branching simulations seeded for the prototype.</b>
-          <span>Each one routes through a fixed decision tree, score rules and replay metrics.</span>
+          <b>Legacy branching scenarios remain available as support content.</b>
+          <span>Use these seeded paths when you want deterministic replay instead of live AI generation.</span>
         </div>
       </div>
       <div className="scenario-grid">
@@ -1243,10 +1663,17 @@ function PressurePage({ user, onComplete, deepLink, clearDeepLink }) {
             <h2>{detail.title}</h2>
             <p>{detail.scenario}</p>
             {!started ? (
-              <button className="primary" onClick={() => setStarted(true)}>
-                <Play size={16} />
-                Start test
-              </button>
+              <div className="pressure-start-panel">
+                <div className="pressure-start-copy">
+                  <span className="eyebrow">READY TO BEGIN</span>
+                  <b>Enter the timed pressure scenario when you are ready.</b>
+                  <span>The timer starts visually and the response options will open immediately.</span>
+                </div>
+                <button className="primary full pressure-start-button" onClick={() => setStarted(true)}>
+                  <Play size={16} />
+                  Start test
+                </button>
+              </div>
             ) : (
               <>
                 {detail.options.map((option) => (
@@ -1275,90 +1702,114 @@ function PressurePage({ user, onComplete, deepLink, clearDeepLink }) {
   );
 }
 
-function CoachPage() {
-  const [topics, setTopics] = useState([]);
-  const [selectedTopic, setSelectedTopic] = useState('');
-  const [questions, setQuestions] = useState([]);
-  const [answer, setAnswer] = useState(null);
-  const [search, setSearch] = useState('');
+function CoachPage({ user }) {
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: 'Ask me about a compliance situation, policy control, or escalation decision. I will answer using approved guidance.',
+      topicName: 'Policy guidance',
+      sources: [],
+    },
+  ]);
+  const [composer, setComposer] = useState('');
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const deferredSearch = useDeferredValue(search);
 
-  useEffect(() => {
-    api.getCoachTopics().then((response) => {
-      setTopics(response);
-      setSelectedTopic(response[0]?.id || '');
-    }).catch((err) => setError(err.message));
-  }, []);
+  const sendQuestion = async (event, suggestedQuestion) => {
+    event?.preventDefault();
+    const question = (suggestedQuestion || composer).trim();
+    if (!question || sending) return;
 
-  useEffect(() => {
-    if (!selectedTopic && !deferredSearch) {
-      return;
-    }
-    const loader = deferredSearch.trim()
-      ? api.searchCoach(deferredSearch.trim())
-      : api.getCoachQuestions(selectedTopic);
-    loader.then(setQuestions).catch((err) => setError(err.message));
-  }, [selectedTopic, deferredSearch]);
-
-  const loadAnswer = async (questionId) => {
+    const userMessage = { role: 'user', content: question };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setComposer('');
+    setSending(true);
+    setError('');
     try {
-      const response = await api.getCoachAnswer(questionId);
-      setAnswer(response);
+      const response = await api.chatWithCoach({
+        userId: user.id,
+        message: question,
+        history: messages.slice(-4).map((message) => ({ role: message.role, content: message.content })),
+      });
+      setMessages([
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: response.answer,
+          topicName: response.topicName,
+          sources: response.sources,
+          fallback: response.fallback,
+        },
+      ]);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSending(false);
     }
   };
 
-  if (error) return <ErrorNotice message={error} />;
-
   return (
-    <div className="coach-layout">
-      <aside className="card coach-topics">
-        <span className="eyebrow">TOPICS</span>
-        {topics.map((topic) => (
-          <button key={topic.id} className={selectedTopic === topic.id ? 'selected' : ''} onClick={() => { setSelectedTopic(topic.id); setSearch(''); }}>
-            {topic.plainName}
-            <ChevronDown size={15} />
-          </button>
-        ))}
-      </aside>
-      <article className="card coach-chat">
-        <div className="coach-title">
+    <div className="policy-coach-layout">
+      <article className="card policy-chat-panel">
+        <div className="policy-chat-head">
           <div className="coach-icon"><Brain /></div>
           <div>
-            <h2>Compliance Coach</h2>
-            <p>Static, predefined answers only. No AI in this version.</p>
+            <h2>Policy Coach</h2>
+            <p>Grounded answers for day-to-day compliance questions.</p>
           </div>
+          <span className="tag green"><ShieldCheck size={13} /> Policy grounded</span>
         </div>
-        <div className="coach-search">
-          <Search size={18} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search predefined compliance questions" />
-        </div>
-        <div className="question-list">
-          {questions.map((question) => (
-            <button key={question.id} className="coach-question" onClick={() => loadAnswer(question.id)}>
-              <CircleMarker />
+        <div className="policy-messages">
+          {messages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`policy-message ${message.role}`}>
+              {message.role === 'assistant' && <div className="policy-message-avatar"><Brain size={16} /></div>}
               <div>
-                <b>{question.question}</b>
-                <span>{question.topicName}</span>
+                {message.topicName && <span>{message.topicName}{message.fallback ? ' · Offline guidance' : ''}</span>}
+                <p>{message.content}</p>
+                {message.sources?.length > 0 && (
+                  <details>
+                    <summary>Approved guidance used</summary>
+                    {message.sources.map((source) => <small key={source}>{source}</small>)}
+                  </details>
+                )}
               </div>
-            </button>
-          ))}
-        </div>
-        {answer && (
-          <div className="coach-answer-panel">
-            <h3>{answer.question}</h3>
-            <div className="answer-grid">
-              <AnswerBlock label="Simple explanation" value={answer.answer.simpleExplanation} />
-              <AnswerBlock label="Example" value={answer.answer.example} />
-              <AnswerBlock label="Common mistake" value={answer.answer.commonMistake} />
-              <AnswerBlock label="Recommended action" value={answer.answer.recommendedAction} />
-              <AnswerBlock label="Remember this" value={answer.answer.remember} />
             </div>
-          </div>
-        )}
+          ))}
+          {sending && <div className="policy-message assistant loading-message"><div className="policy-message-avatar"><Brain size={16} /></div><p>Reviewing approved guidance...</p></div>}
+        </div>
+        {error && <ErrorNotice message={error} />}
+        <form className="policy-composer" onSubmit={sendQuestion}>
+          <textarea
+            value={composer}
+            onChange={(event) => setComposer(event.target.value)}
+            placeholder="Describe the situation or ask a policy question..."
+            rows={3}
+          />
+          <button className="primary" disabled={!composer.trim() || sending}>
+            <Send size={16} /> {sending ? 'Checking guidance...' : 'Ask Policy Coach'}
+          </button>
+        </form>
       </article>
+
+      <aside className="card policy-coach-aside">
+        <span className="eyebrow">SUGGESTED QUESTIONS</span>
+        <h3>Common situations</h3>
+        {[
+          'Can I send customer data to a personal email if it is urgent?',
+          'What should I do when beneficial ownership evidence is incomplete?',
+          'A senior manager asked me to bypass a control. How should I respond?',
+          'When should a vendor access request be escalated?',
+        ].map((question) => (
+          <button key={question} onClick={(event) => sendQuestion(event, question)} disabled={sending}>
+            <span>{question}</span><ArrowRight size={15} />
+          </button>
+        ))}
+        <div className="policy-boundary-note">
+          <ShieldAlert size={18} />
+          <p>The coach supports internal policy decisions. It does not replace Legal or Compliance approval where required.</p>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -1420,14 +1871,12 @@ function LearningPage({ user, onLaunch }) {
             </div>
           </div>
           {data.recommendations.map((rec) => (
-            <button key={rec.id} className="activity-row action-row" onClick={() => onLaunch({ id: rec.activityId, type: rec.activityType })}>
-              <div className="dot violet" />
-              <div>
-                <b>{rec.title}</b>
-                <span>{rec.reason}</span>
-              </div>
-              <ArrowRight size={16} />
-            </button>
+            <RecommendationCard
+              key={rec.id}
+              title={rec.title}
+              reason={rec.reason}
+              onClick={() => onLaunch({ id: rec.activityId, type: rec.activityType })}
+            />
           ))}
         </article>
         <article className="card activity">
@@ -1486,6 +1935,71 @@ function AchievementsPage({ user }) {
         ))}
       </div>
     </>
+  );
+}
+
+function GameLibraryPage({ user, onLaunch }) {
+  const [levels, setLevels] = useState([]);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => {
+    api.listGameScenarios(user.id).then(setLevels).catch((err) => setError(err.message));
+  }, [user.id]);
+
+  if (error) return <ErrorNotice message={error} />;
+
+  const term = deferredSearch.trim().toLowerCase();
+  const visibleLevels = levels.filter((level) => !term || [level.title, level.topicName, level.brief, level.world.scene?.name]
+    .filter(Boolean)
+    .some((value) => value.toLowerCase().includes(term)));
+
+  return (
+    <div className="game-library">
+      <div className="game-library-toolbar">
+        <div>
+          <span className="eyebrow">INTERACTIVE LEVELS</span>
+          <h2>Choose a training environment</h2>
+          <p>Each level is generated from a validated scenario definition and records its result in your learning profile.</p>
+        </div>
+        <label className="search game-library-search">
+          <Search size={18} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search game levels" />
+        </label>
+      </div>
+
+      <div className="game-level-grid">
+        {visibleLevels.map((level, index) => (
+          <article className="game-level-card" key={level.id}>
+            <div
+              className="game-level-cover"
+              style={{ '--level-color': level.world.scene?.backdrop || level.world.accent }}
+            >
+              <div className="level-map-shape"><i /><i /><i /></div>
+              <span>LEVEL {String(index + 1).padStart(2, '0')}</span>
+              {level.completed && <b><Check size={14} /> Completed</b>}
+            </div>
+            <div className="game-level-body">
+              <div className="training-card-tags">
+                <span>{level.topicName}</span>
+                <span>{level.difficulty}</span>
+                {level.navigationMode === 'ai-assisted' && <span className="ai-route-tag">Adaptive path</span>}
+              </div>
+              <h3>{level.title}</h3>
+              <p>{level.brief}</p>
+              <div className="game-level-meta">
+                <span><Clock3 size={14} /> {level.estimatedMinutes} min</span>
+                <span><LayoutGrid size={14} /> {level.world.scene?.name || level.world.room}</span>
+              </div>
+              <button className="primary wide" onClick={() => onLaunch({ id: level.id, type: 'game-mission' })}>
+                {level.completed ? 'Replay level' : 'Start level'} <Play size={15} />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1576,7 +2090,7 @@ function ManagerPage() {
   }, []);
 
   if (error) return <ErrorNotice message={error} />;
-  if (!data) return <LoadingCard label="Loading manager analytics" />;
+  if (!data) return <LoadingCard label="Loading manager insights" />;
 
   return (
     <>
@@ -1589,7 +2103,7 @@ function ManagerPage() {
 
       <div className="dashboard-grid">
         <article className="card heatmap">
-          <span className="eyebrow">DEPARTMENT HEATMAP</span>
+          <span className="eyebrow">TEAM HEATMAP</span>
           <h3>Topic score comparison</h3>
           <div className="heatmap-table">
             <div className="heatmap-head">
@@ -1613,7 +2127,7 @@ function ManagerPage() {
           </div>
         </article>
         <article className="card gaps">
-          <span className="eyebrow">COMMON KNOWLEDGE GAPS</span>
+          <span className="eyebrow">COMMON LEARNING GAPS</span>
           <h3>Department campaign suggestions</h3>
           {data.gaps.map((gap) => (
             <div className="gap" key={gap.department}>
@@ -1642,7 +2156,7 @@ function ManagerPage() {
           ))}
         </article>
         <article className="card activity">
-          <span className="eyebrow">ACTIVITY PERFORMANCE</span>
+          <span className="eyebrow">ACTIVITY INSIGHTS</span>
           <h3>Aggregate insights</h3>
           <div className="activity-row">
             <div className="dot amber" />
@@ -1810,9 +2324,90 @@ function ReportPanel({ report, onReplay, onHome }) {
         </div>
         <div className="actions-bar">
           {onReplay && <button className="primary" onClick={onReplay}><RefreshCcw size={16} /> Replay</button>}
-          {onHome && <button className="outline" onClick={onHome}>Return Home</button>}
+          {onHome && <button className="outline" onClick={onHome}>Return to workspace</button>}
         </div>
       </article>
+    </div>
+  );
+}
+
+function TopbarAiStatus({ aiStatus }) {
+  const loading = !aiStatus;
+  const ready = aiStatus?.status === 'ok';
+  return (
+    <div className={loading ? 'ops-status' : ready ? 'ops-status ready' : 'ops-status down'}>
+      <span className="status-dot" />
+      <div>
+        <strong>{loading ? 'Checking AI' : ready ? 'Model Ready' : 'Fallback Mode'}</strong>
+        <span>{loading ? 'Verifying Ollama and model status' : ready ? `${aiStatus.models?.length || 0} model(s) available` : 'Live AI unavailable'}</span>
+      </div>
+    </div>
+  );
+}
+
+function AiStatusSummary({ aiStatus }) {
+  const loading = !aiStatus;
+  const ready = aiStatus?.status === 'ok';
+  return (
+    <div className={loading ? 'sidebar-status' : ready ? 'sidebar-status ready' : 'sidebar-status down'}>
+      <div className="sidebar-status-head">
+        <span className="status-dot" />
+        <b>{loading ? 'Checking AI engine' : ready ? 'AI engine ready' : 'Fallback mode'}</b>
+      </div>
+      <span>{loading ? 'Loading live simulation readiness.' : ready ? 'Live simulation can start from the workspace.' : 'Support tools remain available while AI is offline.'}</span>
+    </div>
+  );
+}
+
+function StatusListItem({ label, value, tone }) {
+  return (
+    <div className="status-item">
+      <span>{label}</span>
+      <b className={`tone-${tone}`}>{value}</b>
+    </div>
+  );
+}
+
+function TimelineTurn({ turn }) {
+  const learner = turn.turnKind === 'learner';
+  return (
+    <article className={learner ? 'card timeline-turn learner' : 'card timeline-turn system'}>
+      <div className="timeline-meta">
+        <span className="eyebrow">{learner ? 'YOUR RESPONSE' : turn.actor}</span>
+        <span>{learner ? 'Learner turn' : turn.turnKind === 'system' ? 'Scenario update' : turn.turnKind}</span>
+      </div>
+      <p>{turn.content}</p>
+      {turn.artifact && (
+        <div className="timeline-artifact">
+          <div className="artifact-head">
+            <span className="eyebrow">Artifact</span>
+            <span className="tag">{turn.artifact.type}</span>
+          </div>
+          <b>{turn.artifact.title}</b>
+          <p>{turn.artifact.content}</p>
+        </div>
+      )}
+      {turn.evaluation && (
+        <div className="timeline-evaluation">
+          <div className="evaluation-score">
+            <strong>{turn.evaluation.score}%</strong>
+            <span>{turn.evaluation.label}</span>
+          </div>
+          <InsightMini title="Strengths" items={turn.evaluation.strengths} />
+          <InsightMini title="Gaps" items={turn.evaluation.gaps} />
+        </div>
+      )}
+    </article>
+  );
+}
+
+function InsightMini({ title, items }) {
+  return (
+    <div className="insight-mini">
+      <span className="eyebrow">{title}</span>
+      {(items || []).slice(0, 3).map((item) => (
+        <div key={item} className="workspace-bullet">{item}</div>
+      ))}
     </div>
   );
 }
@@ -1837,6 +2432,26 @@ function MetricCard({ icon: Icon, color, value, label }) {
         <span>{label}</span>
       </div>
     </article>
+  );
+}
+
+function RecommendationCard({ title, reason, onClick }) {
+  const onKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
+  return (
+    <div className="recommendation-card" role="button" tabIndex={0} onClick={onClick} onKeyDown={onKeyDown}>
+      <div className="dot violet" />
+      <div>
+        <b>{title}</b>
+        <span>{reason}</span>
+      </div>
+      <ArrowRight size={16} />
+    </div>
   );
 }
 
@@ -1877,6 +2492,30 @@ function ClipboardIcon(props) {
 
 function CircleMarker() {
   return <div className="question-marker" />;
+}
+
+function normalizePageName(page) {
+  if (page === 'Simulations') {
+    return 'Legacy Scenarios';
+  }
+  if (page === 'Compliance Coach') {
+    return 'Policy Coach';
+  }
+  if (page === 'Manager Dashboard') {
+    return 'Manager Insights';
+  }
+  if (page === 'Home') {
+    return 'My Training';
+  }
+  return page;
+}
+
+function difficultyLabel(value) {
+  return AI_DIFFICULTIES.find((item) => item.id === value)?.label || value;
+}
+
+function topicNameFromId(topicId) {
+  return AI_TOPICS.find((topic) => topic.id === topicId)?.name || topicId || 'Topic';
 }
 
 function initials(name) {

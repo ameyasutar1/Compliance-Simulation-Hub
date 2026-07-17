@@ -1,0 +1,151 @@
+{
+  "schemaVersion": "1.1",
+  "id": "game-kyc-welcome-desk",
+  "title": "The Incomplete Welcome Desk",
+  "topicId": "kyc",
+  "topicName": "KYC",
+  "difficulty": "Intermediate",
+  "estimatedMinutes": 7,
+  "brief": "A valuable new corporate customer arrives for onboarding while ownership evidence is still incomplete.",
+  "objective": "Keep the customer experience moving without treating incomplete ownership evidence as approved.",
+  "startNodeId": "kyc-arrival",
+  "navigationMode": "ai-assisted",
+  "assignmentRoles": ["Operations Analyst", "Operations Associate", "Relationship Manager"],
+  "assignmentDepartments": ["Operations", "Sales", "Compliance"],
+  "dueInDays": 10,
+  "world": {
+    "room": "Client Onboarding Centre",
+    "accent": "#1f9d85",
+    "npc": { "x": 650, "y": 300 },
+    "missionSpot": { "x": 7.0, "y": 5.25 },
+    "scene": {
+      "name": "Client Onboarding Centre",
+      "backdrop": "#8bb7a8",
+      "backdropAccent": "#c7dfd6",
+      "playerSpawn": { "x": 6.1, "y": 8.6 },
+      "walls": [
+        { "x1": 0, "y1": 4.2, "x2": 5.1, "y2": 4.2 },
+        { "x1": 6.0, "y1": 4.2, "x2": 14, "y2": 4.2 },
+        { "x1": 5.2, "y1": 0, "x2": 5.2, "y2": 3.3 },
+        { "x1": 9.3, "y1": 0, "x2": 9.3, "y2": 3.3 }
+      ],
+      "rooms": [
+        { "x": 1.0, "y": 0.6, "label": "DOCUMENT REVIEW", "accent": "#3679c7" },
+        { "x": 5.8, "y": 0.6, "label": "KYC CONTROL", "accent": "#1f9d85" },
+        { "x": 10.2, "y": 0.6, "label": "CLIENT LOUNGE", "accent": "#e39b36" },
+        { "x": 5.3, "y": 5.0, "label": "WELCOME DESK", "accent": "#765ed1" }
+      ],
+      "furniture": [
+        { "type": "desk", "x": 1.2, "y": 1.4, "accent": "#3679c7" },
+        { "type": "desk", "x": 3.1, "y": 2.3, "accent": "#3679c7" },
+        { "type": "desk", "x": 5.8, "y": 1.5, "accent": "#1f9d85" },
+        { "type": "server", "x": 8.1, "y": 2.2, "accent": "#1b4053" },
+        { "type": "meeting-table", "x": 10.7, "y": 1.7, "accent": "#e39b36" },
+        { "type": "desk", "x": 5.1, "y": 5.7, "accent": "#765ed1" },
+        { "type": "desk", "x": 8.2, "y": 6.8, "accent": "#765ed1" },
+        { "type": "plant", "x": 0.7, "y": 8.8 },
+        { "type": "plant", "x": 12.9, "y": 8.8 }
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "kyc-arrival",
+      "speaker": "Maya Rao, Relationship Manager",
+      "message": "The directors are here to sign. We have the company documents, but the beneficial owner declaration will arrive tomorrow.",
+      "prompt": "How do you keep onboarding moving without approving an incomplete file?",
+      "artifact": {
+        "type": "access-request",
+        "title": "Corporate onboarding checklist",
+        "body": "Company registration verified. Ownership declaration and source-of-funds evidence remain outstanding."
+      },
+      "choices": [
+        {
+          "id": "approve-temporarily",
+          "label": "Approve now and add the missing evidence tomorrow.",
+          "scoreDelta": -24,
+          "riskDelta": 30,
+          "consequence": "The customer is treated as approved before ownership is understood.",
+          "nextNodeId": "kyc-escalation",
+          "possibleNextNodeIds": ["kyc-escalation", "kyc-verification"]
+        },
+        {
+          "id": "hold-with-path",
+          "label": "Hold approval, explain the missing evidence and arrange an expedited review.",
+          "scoreDelta": 28,
+          "riskDelta": -20,
+          "consequence": "The customer receives a clear path forward while approval remains controlled.",
+          "nextNodeId": "kyc-verification",
+          "possibleNextNodeIds": ["kyc-verification", "kyc-escalation"]
+        },
+        {
+          "id": "reject-customer",
+          "label": "Reject the customer permanently because one document is late.",
+          "scoreDelta": 3,
+          "riskDelta": -3,
+          "consequence": "Risk is contained, but a remediable evidence gap is treated as permanent failure.",
+          "nextNodeId": "kyc-escalation",
+          "possibleNextNodeIds": ["kyc-escalation", "kyc-verification"]
+        }
+      ]
+    },
+    {
+      "id": "kyc-verification",
+      "speaker": "KYC Reviewer",
+      "message": "The declaration has arrived, but the ownership percentages do not match the company register.",
+      "prompt": "What should happen before approval?",
+      "artifact": {
+        "type": "access-request",
+        "title": "Ownership discrepancy",
+        "body": "Submitted declaration totals 92%. Registry extract names an additional corporate shareholder."
+      },
+      "choices": [
+        {
+          "id": "resolve-discrepancy",
+          "label": "Request the complete ownership chain and resolve the discrepancy.",
+          "scoreDelta": 30,
+          "riskDelta": -24,
+          "consequence": "The ownership structure is verified before the relationship becomes active.",
+          "nextNodeId": null
+        },
+        {
+          "id": "accept-near-match",
+          "label": "Accept it because the percentages are close enough.",
+          "scoreDelta": -22,
+          "riskDelta": 26,
+          "consequence": "A material ownership gap remains hidden in the approved customer file.",
+          "nextNodeId": null
+        }
+      ]
+    },
+    {
+      "id": "kyc-escalation",
+      "speaker": "Regional Sales Head",
+      "message": "This is a strategic customer. I will accept responsibility if you activate them today.",
+      "prompt": "How do you respond to senior pressure?",
+      "artifact": {
+        "type": "chat",
+        "title": "Executive activation request",
+        "body": "Activate today. Evidence can be regularized after the first transaction."
+      },
+      "choices": [
+        {
+          "id": "document-and-hold",
+          "label": "Document the request, hold activation and escalate through KYC governance.",
+          "scoreDelta": 32,
+          "riskDelta": -25,
+          "consequence": "The pressure is auditable and accountable KYC governance decides the next step.",
+          "nextNodeId": null
+        },
+        {
+          "id": "senior-override",
+          "label": "Activate because the regional head accepted responsibility.",
+          "scoreDelta": -30,
+          "riskDelta": 34,
+          "consequence": "Seniority is incorrectly treated as a substitute for completed KYC controls.",
+          "nextNodeId": null
+        }
+      ]
+    }
+  ]
+}

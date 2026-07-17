@@ -1,26 +1,31 @@
 # Compliance Simulation Platform
 
-Compliance training prototype with a React frontend and a FastAPI backend backed by PostgreSQL persistence. The platform now also includes the first Ollama-powered AI simulation foundation alongside the original static flows.
+Compliance training platform with a React shell, an embedded Phaser office mission hub, a FastAPI backend, PostgreSQL persistence, and an Ollama-powered AI simulation engine.
 
 ## What is included
 
 - Employee login with seeded users
-- Home dashboard with daily challenge, topic focus and recommendations
-- API-backed scenario simulations with branching decisions and replay insights
-- Red Flag Lab exercises
-- Investigation Mode with evidence review and final dispositions
-- Pressure Tests
-- Static Compliance Coach with topic browsing and search
+- Employee home with role-based pending and completed game training
+- JSON-authored game levels with validated maps, furniture, conditions and branching decisions
+- AI-assisted game routing constrained to scenario-authored branch candidates
+- Grounded Policy Coach chatbot with approved-guidance fallback
 - Learning profile with topic scores, recommendations, activity history and badges
-- Scenario Library with filters
+- Scenario Library for launching interactive game levels
 - Manager Dashboard with aggregate analytics
 - Settings and demo reset
 - Ollama-backed AI simulation endpoints with free-text turn handling
+- Isometric Phaser environments with keyboard movement, walking characters, ambient music and consequence feedback
+- Server-authoritative game decisions with PostgreSQL-backed scores, learning history and XP
+- Validated scenario contracts that can safely accept reviewed AI-generated content later
 
 ## Project structure
 
-- `Compliance AI Agent/`: Vite + React frontend
+- `frontend/`: Vite + React application and embedded Phaser mission player
 - `backend/`: FastAPI backend
+- `backend/app/game_scenarios.py`: validated game-level schema and JSON loader
+- `backend/app/game_levels/`: drop-in JSON game-level definitions
+- `backend/app/llm_setup.py`: provider-neutral LLM adapter, currently configured for Ollama
+- `game-poc/`: standalone Phaser experimentation sandbox
 - PostgreSQL is now the persistence layer
 
 ## Backend setup
@@ -54,12 +59,38 @@ OLLAMA_LARGE_MODEL=gemma3:4b
 OLLAMA_CONTEXT_WINDOW=2048
 ```
 
+`LLM_PROVIDER=ollama` is the current provider. To add OpenAI or Google later, implement another `LLMProvider` adapter in `backend/app/llm_setup.py`; simulation and game orchestration do not need to change.
+
+## Add a game level
+
+Create a `.json` file in `backend/app/game_levels/`. Use
+`backend/app/game_levels/kyc-welcome-desk.json` as the complete example.
+
+Each level can define:
+
+- employee role and department assignments
+- title, topic, difficulty, duration and objective
+- player and mission-character positions
+- room labels, walls, furniture and environment colors
+- dialogue nodes, artifacts, decisions, score/risk effects and consequences
+- deterministic branches or constrained `ai-assisted` branch candidates
+
+The backend validates every JSON file at startup. AI routing can select only from
+`possibleNextNodeIds`; invalid AI output or an unavailable model automatically uses
+the authored `nextNodeId` fallback.
+
+When the backend runs inside Docker, it automatically defaults Ollama to:
+
+```text
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
 The backend runs on `http://127.0.0.1:8000` by default.
 
 ## Frontend setup
 
 ```bash
-cd "Compliance AI Agent"
+cd frontend
 npm install
 npm run dev
 ```
@@ -75,7 +106,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000/api npm run dev
 ## Build
 
 ```bash
-cd "Compliance AI Agent"
+cd frontend
 npm run build
 ```
 
@@ -97,6 +128,26 @@ Run it on port `8000`:
 
 ```bash
 docker run --rm -p 8000:8000 compliance-simulation-platform
+```
+
+On macOS with Ollama running on the host, the container will automatically try
+`http://host.docker.internal:11434` for AI calls after rebuilding the image.
+
+If you want to set it explicitly:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  compliance-simulation-platform
+```
+
+On Linux, add the host gateway mapping:
+
+```bash
+docker run --rm -p 8000:8000 \
+  --add-host=host.docker.internal:host-gateway \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  compliance-simulation-platform
 ```
 
 Then open:
@@ -136,7 +187,15 @@ docker run --rm -p 8000:8000 \
 
 - Seed content is defined in `backend/app/seed_data.py`.
 - Mutable progress is stored in PostgreSQL through `backend/app/db.py`.
-- Ollama integration, token guards, and AI simulation orchestration live in `backend/app/ai.py` and `backend/app/main.py`.
+- AI orchestration lives in `backend/app/ai.py` and `backend/app/main.py`; model transport and provider selection live only in `backend/app/llm_setup.py`.
+- Phaser mission endpoints:
+  - `GET /api/training/assignments`
+  - `GET /api/game/scenarios`
+  - `POST /api/game/sessions`
+  - `GET /api/game/sessions/{attempt_id}`
+  - `POST /api/game/sessions/{attempt_id}/decisions`
+- Policy Coach endpoint:
+  - `POST /api/coach/chat`
 - Initial AI endpoints:
   - `GET /api/ai/status`
   - `POST /api/ai/simulations`

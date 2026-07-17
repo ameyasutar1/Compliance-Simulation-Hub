@@ -280,6 +280,7 @@ def _xp_for_attempt(activity_type: str, score: int) -> int:
     base = {
         "daily-challenge": 50,
         "simulation": 100,
+        "game-mission": 125,
         "red-flag": 75,
         "investigation": 150,
         "pressure-test": 90,

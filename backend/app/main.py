@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .ai import (
     OllamaError,
@@ -38,6 +38,7 @@ from .db import (
     update_active_attempt,
     update_settings,
 )
+from .game_scenarios import get_game_mission, list_game_missions
 from .seed_data import load_catalog
 
 
@@ -119,6 +120,23 @@ class AiSimulationTurnRequest(BaseModel):
     userId: str
     learnerResponse: str
     closeSession: bool = False
+
+
+class GameSessionStartRequest(BaseModel):
+    userId: str
+    scenarioId: str
+
+
+class GameDecisionRequest(BaseModel):
+    userId: str
+    nodeId: str
+    choiceId: str
+
+
+class CoachChatRequest(BaseModel):
+    userId: str
+    message: str
+    history: list[dict] = Field(default_factory=list)
 
 
 @app.on_event("startup")
@@ -346,6 +364,118 @@ def normalize_turn_payload(payload: dict) -> dict:
     return normalized
 
 
+def fallback_ai_opening(user: dict, topic: dict, difficulty: str) -> dict:
+    guidance = get_policy_guidance(topic["id"])
+    return normalize_opening_payload(
+        topic["id"],
+        topic["name"],
+        {
+            "title": f"{topic['name']}: Live Control Review",
+            "summary": (
+                f"A live {difficulty} simulation opens in {user['department']}. "
+                f"You need to apply policy judgement before a pressured request moves forward."
+            ),
+            "currentSituation": {
+                "speaker": "Control Desk",
+                "time": "Now",
+                "location": f"{user['department']} control queue",
+                "channel": "Case alert",
+                "message": (
+                    f"A stakeholder has raised an urgent {topic['name'].lower()} request and expects immediate action. "
+                    "Review the facts, identify the risk, and decide the safest compliant next step."
+                ),
+            },
+            "artifact": {
+                "type": "alert",
+                "title": f"{topic['name']} control signal",
+                "content": "Urgency, incomplete verification, and possible control bypass have been detected.",
+            },
+            "responsePrompt": "What would you do first, what control would you apply, and would you escalate?",
+            "riskSignals": guidance[:3],
+            "learningObjectives": [
+                f"Apply core {topic['name']} controls under pressure.",
+                "Use approved escalation paths before proceeding.",
+            ],
+            "rubric": [
+                {"name": "Risk identification", "weight": 30},
+                {"name": "Control application", "weight": 30},
+                {"name": "Escalation judgement", "weight": 25},
+                {"name": "Reasoning clarity", "weight": 15},
+            ],
+            "_meta": {
+                "model": "fallback-simulation-engine",
+                "reason": "malformed-json",
+            },
+        },
+    )
+
+
+def fallback_ai_turn(topic: dict, learner_response: str, close_session: bool) -> dict:
+    guidance = get_policy_guidance(topic["id"])
+    response_lower = learner_response.lower()
+    positive_signals = [
+        "escalat",
+        "verify",
+        "approved",
+        "policy",
+        "secure",
+        "pause",
+        "hold",
+        "manager",
+        "compliance",
+        "document",
+    ]
+    score = 58 + min(32, sum(6 for signal in positive_signals if signal in response_lower))
+    if any(signal in response_lower for signal in ["immediately", "send now", "just send", "ignore"]):
+        score -= 14
+    score = clamp_score(score)
+    label = performance_label(score)
+    return normalize_turn_payload(
+        {
+            "evaluation": {
+                "score": score,
+                "label": label,
+                "strengths": [
+                    "Your response engaged with the control decision rather than treating the request as routine.",
+                    "You addressed the need for a deliberate next step under pressure.",
+                ],
+                "gaps": [
+                    "Be explicit about the approval path, verification checks, and what must pause immediately.",
+                    "Tie the response more directly to documented policy language and escalation ownership.",
+                ],
+                "policyReasoning": guidance[:3],
+                "recommendedAction": (
+                    "Pause the action, confirm the facts, use only approved channels, and escalate through compliance or line management before release."
+                ),
+                "citations": ["Core policy guidance", f"{topic['name']} escalation standard"],
+            },
+            "nextEvent": {
+                "speaker": "Reviewer",
+                "time": "Moments later",
+                "location": "Simulation workspace",
+                "channel": "Follow-up note",
+                "message": (
+                    "The stakeholder asks for justification and wants to know whether the request is blocked, escalated, or conditionally held."
+                ),
+            },
+            "artifact": {
+                "type": "note",
+                "title": "Reviewer follow-up",
+                "content": (
+                    "Document the risk, the blocked action, the control you relied on, and the specific escalation path you would trigger next."
+                ),
+            },
+            "decisionPrompt": "Draft the exact escalation or control message you would send next.",
+            "status": "completed" if close_session else "active",
+            "summary": "The simulation continues with a reviewer challenge focused on your control reasoning and escalation clarity.",
+            "_meta": {
+                "model": "fallback-simulation-engine",
+                "reason": "malformed-json",
+            },
+        }
+    )
+
+
 def build_ai_opening(user: dict, topic: dict, difficulty: str) -> dict:
     payload = {
         "topic": {"id": topic["id"], "name": topic["name"], "description": topic["description"]},
@@ -368,16 +498,21 @@ def build_ai_opening(user: dict, topic: dict, difficulty: str) -> dict:
             "rubric": [{"name": "string", "weight": 25}],
         },
     }
-    result = generate_json(
-        system_prompt=(
-            "You generate a realistic but constrained compliance training scenario. "
-            "Keep it grounded in the provided topic and policy guidance, avoid legal advice, "
-            "and produce only the requested JSON fields."
-        ),
-        user_payload=payload,
-        task_size="large",
-        temperature=0.5,
-    )
+    try:
+        result = generate_json(
+            system_prompt=(
+                "You generate a realistic but constrained compliance training scenario. "
+                "Keep it grounded in the provided topic and policy guidance, avoid legal advice, "
+                "and produce only the requested JSON fields."
+            ),
+            user_payload=payload,
+            task_size="large",
+            temperature=0.5,
+        )
+    except OllamaError as exc:
+        if "valid JSON" not in str(exc):
+            raise
+        return fallback_ai_opening(user, topic, difficulty)
     return normalize_opening_payload(topic["id"], topic["name"], result)
 
 
@@ -430,16 +565,21 @@ def build_ai_turn(user: dict, topic: dict, difficulty: str, session: dict, learn
             "summary": "string",
         },
     }
-    result = generate_json(
-        system_prompt=(
-            "You are evaluating a learner's compliance response and advancing a simulation by one turn. "
-            "Score with the provided policy guidance, explain consequences clearly, and keep the next event realistic. "
-            "If closeSession is true, you may return status completed."
-        ),
-        user_payload=payload,
-        task_size="large",
-        temperature=0.35,
-    )
+    try:
+        result = generate_json(
+            system_prompt=(
+                "You are evaluating a learner's compliance response and advancing a simulation by one turn. "
+                "Score with the provided policy guidance, explain consequences clearly, and keep the next event realistic. "
+                "If closeSession is true, you may return status completed."
+            ),
+            user_payload=payload,
+            task_size="large",
+            temperature=0.35,
+        )
+    except OllamaError as exc:
+        if "valid JSON" not in str(exc):
+            raise
+        return fallback_ai_turn(topic, learner_response, close_session)
     return normalize_turn_payload(result)
 
 
@@ -922,6 +1062,7 @@ def build_report(
     performance = performance_label(score)
     xp_awarded = {
         "simulation": 100,
+        "game-mission": 125,
         "daily-challenge": 50,
         "red-flag": 75,
         "investigation": 150,
@@ -1090,6 +1231,227 @@ def submit_ai_simulation_turn(session_id: str, payload: AiSimulationTurnRequest)
     return {
         "result": generated_turn,
         **build_ai_session_response(updated_session),
+    }
+
+
+def game_mission_preview(user_id: str, mission: dict) -> dict:
+    attempts = [
+        attempt
+        for attempt in list_attempts(user_id, "game-mission")
+        if attempt["activityId"] == mission["id"]
+    ]
+    return {
+        "id": mission["id"],
+        "title": mission["title"],
+        "topicId": mission["topicId"],
+        "topicName": mission["topicName"],
+        "difficulty": mission["difficulty"],
+        "estimatedMinutes": mission["estimatedMinutes"],
+        "brief": mission["brief"],
+        "objective": mission["objective"],
+        "navigationMode": mission.get("navigationMode", "rules"),
+        "assignmentRoles": mission.get("assignmentRoles", []),
+        "assignmentDepartments": mission.get("assignmentDepartments", []),
+        "dueInDays": mission.get("dueInDays", 14),
+        "world": mission["world"],
+        "completed": bool(attempts),
+        "bestScore": max((attempt["score"] for attempt in attempts), default=None),
+    }
+
+
+def game_mission_is_assigned(user: dict, mission: dict) -> bool:
+    roles = mission.get("assignmentRoles", [])
+    departments = mission.get("assignmentDepartments", [])
+    if not roles and not departments:
+        return True
+    return user["role"] in roles or user["department"] in departments
+
+
+def choose_ai_game_branch(mission: dict, node: dict, choice: dict, state: dict) -> tuple[str | None, dict | None]:
+    candidates = choice.get("possibleNextNodeIds", [])
+    authored_fallback = choice.get("nextNodeId")
+    if mission.get("navigationMode") != "ai-assisted" or not candidates:
+        return authored_fallback, None
+
+    candidate_nodes = [
+        {
+            "id": candidate["id"],
+            "speaker": candidate["speaker"],
+            "situation": candidate["message"],
+            "decisionPrompt": candidate["prompt"],
+        }
+        for candidate in mission["nodes"]
+        if candidate["id"] in candidates
+    ]
+    try:
+        routing = generate_json(
+            system_prompt=(
+                "Route a compliance training game. Select exactly one authored candidate next node that creates the "
+                "most realistic consequence of the learner choice. Do not invent nodes. Return JSON with "
+                "nextNodeId and a concise reason."
+            ),
+            user_payload={
+                "mission": mission["title"],
+                "currentSituation": node["message"],
+                "learnerChoice": choice["label"],
+                "authoredConsequence": choice["consequence"],
+                "currentScore": state.get("score", 50),
+                "currentRisk": state.get("risk", 35),
+                "candidates": candidate_nodes,
+            },
+            task_size="small",
+            temperature=0.1,
+            max_output_tokens=120,
+        )
+        next_node_id = routing.get("nextNodeId")
+        if next_node_id not in candidates:
+            raise ValueError("AI selected a node outside the authored candidates")
+        return next_node_id, {
+            "mode": "ai-assisted",
+            "reason": str(routing.get("reason", "Branch selected from authored conditions."))[:240],
+        }
+    except (OllamaError, ValueError, TypeError):
+        return authored_fallback, {
+            "mode": "authored-fallback",
+            "reason": "The authored branch was used because AI routing was unavailable.",
+        }
+
+
+def require_game_attempt(attempt_id: str, user_id: str) -> dict:
+    attempt = get_active_attempt(attempt_id)
+    if not attempt or attempt["userId"] != user_id or attempt["activityType"] != "game-mission":
+        raise HTTPException(status_code=404, detail="Active game session not found")
+    return attempt
+
+
+@app.get("/api/game/scenarios")
+def game_scenarios(userId: str = Query(...)) -> list[dict]:
+    require_user(userId)
+    return [game_mission_preview(userId, mission) for mission in list_game_missions()]
+
+
+@app.get("/api/training/assignments")
+def training_assignments(userId: str = Query(...)) -> dict:
+    user = require_user(userId)
+    assigned = [mission for mission in list_game_missions() if game_mission_is_assigned(user, mission)]
+    previews = [game_mission_preview(userId, mission) for mission in assigned]
+    pending = [item for item in previews if not item["completed"]]
+    completed = [item for item in previews if item["completed"]]
+    return {
+        "employee": {"id": user["id"], "name": user["name"], "role": user["role"]},
+        "summary": {"assigned": len(previews), "pending": len(pending), "completed": len(completed)},
+        "pending": pending,
+        "completed": completed,
+    }
+
+
+@app.post("/api/game/sessions")
+def start_game_session(payload: GameSessionStartRequest) -> dict:
+    require_user(payload.userId)
+    mission = get_game_mission(payload.scenarioId)
+    if not mission:
+        raise HTTPException(status_code=404, detail="Game mission not found")
+
+    state = {
+        "scenarioId": mission["id"],
+        "currentNodeId": mission["startNodeId"],
+        "score": 50,
+        "risk": 35,
+        "decisions": [],
+    }
+    attempt = create_active_attempt(payload.userId, mission["id"], "game-mission", state)
+    return {"attempt": attempt, "mission": mission}
+
+
+@app.get("/api/game/sessions/{attempt_id}")
+def get_game_session(attempt_id: str, userId: str = Query(...)) -> dict:
+    require_user(userId)
+    attempt = require_game_attempt(attempt_id, userId)
+    mission = get_game_mission(attempt["activityId"])
+    if not mission:
+        raise HTTPException(status_code=404, detail="Game mission not found")
+    return {"attempt": attempt, "mission": mission}
+
+
+@app.post("/api/game/sessions/{attempt_id}/decisions")
+def submit_game_decision(attempt_id: str, payload: GameDecisionRequest) -> dict:
+    require_user(payload.userId)
+    attempt = require_game_attempt(attempt_id, payload.userId)
+    mission = get_game_mission(attempt["activityId"])
+    if not mission:
+        raise HTTPException(status_code=404, detail="Game mission not found")
+
+    state = attempt["state"]
+    if state.get("currentNodeId") != payload.nodeId:
+        raise HTTPException(status_code=409, detail="This mission decision is no longer current")
+
+    node = next((item for item in mission["nodes"] if item["id"] == payload.nodeId), None)
+    if not node:
+        raise HTTPException(status_code=404, detail="Mission node not found")
+    choice = next((item for item in node["choices"] if item["id"] == payload.choiceId), None)
+    if not choice:
+        raise HTTPException(status_code=404, detail="Mission choice not found")
+
+    state["score"] = clamp_score(state.get("score", 50) + choice["scoreDelta"])
+    state["risk"] = clamp_score(state.get("risk", 35) + choice["riskDelta"])
+    state["decisions"].append(
+        {
+            "nodeId": node["id"],
+            "speaker": node["speaker"],
+            "prompt": node["prompt"],
+            "choiceId": choice["id"],
+            "choice": choice["label"],
+            "scoreDelta": choice["scoreDelta"],
+            "riskDelta": choice["riskDelta"],
+            "consequence": choice["consequence"],
+        }
+    )
+    next_node_id, navigation = choose_ai_game_branch(mission, node, choice, state)
+    state["decisions"][-1]["navigation"] = navigation
+    state["currentNodeId"] = next_node_id
+
+    if next_node_id:
+        next_node = next(item for item in mission["nodes"] if item["id"] == next_node_id)
+        update_active_attempt(attempt_id, state)
+        return {
+            "complete": False,
+            "consequence": choice["consequence"],
+            "score": state["score"],
+            "risk": state["risk"],
+            "nextNode": next_node,
+            "navigation": navigation,
+        }
+
+    completed_at = now_iso()
+    final_score = clamp_score(state["score"] - max(0, state["risk"] - 50) * 0.35)
+    positive = [item["choice"] for item in state["decisions"] if item["scoreDelta"] > 0]
+    missed = [item["choice"] for item in state["decisions"] if item["scoreDelta"] <= 0]
+    report = build_report(
+        activity_id=mission["id"],
+        activity_type="game-mission",
+        user_id=payload.userId,
+        title=mission["title"],
+        score=final_score,
+        topic_scores={mission["topicId"]: final_score},
+        started_at=attempt["startedAt"],
+        completed_at=completed_at,
+        path_signature=">".join(item["choiceId"] for item in state["decisions"]),
+        details={
+            "decisionJourney": state["decisions"],
+            "whatYouDidWell": positive[:3] or ["You completed the mission and reviewed the consequences."],
+            "whatYouMissed": missed[:3],
+            "keyTakeaway": mission["objective"],
+            "finalRisk": state["risk"],
+            "actions": ["Replay Mission", "Return to Mission Hub", "Review Learning Profile"],
+        },
+    )
+    delete_active_attempt(attempt_id)
+    return {
+        "complete": True,
+        "consequence": choice["consequence"],
+        "score": final_score,
+        "risk": state["risk"],
+        "report": report,
     }
 
 
@@ -1654,6 +2016,81 @@ def coach_search(query: str = Query(..., min_length=1)) -> list[dict]:
             if term in text:
                 matches.append({"topicId": topic["id"], "topicName": topic["plainName"], "id": question["id"], "question": question["question"]})
     return matches[:15]
+
+
+def infer_coach_topic(message: str) -> str:
+    normalized = message.lower()
+    aliases = {
+        "aml": ["aml", "money laundering", "payment", "transaction", "beneficiary"],
+        "kyc": ["kyc", "onboarding", "ownership", "source of funds", "customer due diligence"],
+        "data-privacy": ["privacy", "personal data", "customer data", "email", "confidential"],
+        "sanctions": ["sanction", "watchlist", "restricted country"],
+        "market-abuse": ["inside information", "market abuse", "trade", "tip"],
+        "information-security": ["password", "access", "security", "credential", "system"],
+        "third-party-risk": ["vendor", "supplier", "third party", "external"],
+        "conflicts": ["conflict", "gift", "entertainment", "personal interest"],
+        "regulatory-reporting": ["regulatory", "reporting", "filing", "deadline"],
+    }
+    scored = {
+        topic_id: sum(1 for alias in topic_aliases if alias in normalized)
+        for topic_id, topic_aliases in aliases.items()
+    }
+    best_topic, best_score = max(scored.items(), key=lambda item: item[1])
+    return best_topic if best_score else "conduct-risk"
+
+
+@app.post("/api/coach/chat")
+def coach_chat(payload: CoachChatRequest) -> dict:
+    user = require_user(payload.userId)
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Enter a policy question")
+
+    topic_id = infer_coach_topic(message)
+    guidance = get_policy_guidance(topic_id)
+    safe_history = [
+        {
+            "role": str(item.get("role", "user"))[:20],
+            "content": str(item.get("content", ""))[:500],
+        }
+        for item in payload.history[-4:]
+    ]
+    try:
+        generated = generate_json(
+            system_prompt=(
+                "You are an internal compliance policy coach. Answer only from the approved guidance supplied in the "
+                "payload. Be practical, concise, and explicit when escalation or verification is needed. Do not claim "
+                "to provide legal advice. Return JSON with one answer string."
+            ),
+            user_payload={
+                "employeeRole": user["role"],
+                "question": message,
+                "conversation": safe_history,
+                "approvedGuidance": guidance,
+            },
+            task_size="small",
+            temperature=0.15,
+            max_output_tokens=260,
+        )
+        answer = str(generated.get("answer", "")).strip()
+        if not answer:
+            raise ValueError("Policy coach returned an empty answer")
+        fallback = False
+    except (OllamaError, ValueError, TypeError):
+        answer = (
+            f"Based on the approved {topic_name(topic_id)} guidance: {guidance[0]} "
+            f"{guidance[1]} If the facts remain unclear, pause the action, document the concern, and use the approved escalation route."
+        )
+        fallback = True
+
+    return {
+        "answer": answer,
+        "topicId": topic_id,
+        "topicName": topic_name(topic_id),
+        "sources": guidance,
+        "grounded": True,
+        "fallback": fallback,
+    }
 
 
 @app.get("/api/learning/{user_id}")

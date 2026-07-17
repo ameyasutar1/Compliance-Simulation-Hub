@@ -39,9 +39,19 @@ def env_str(name: str, default: str) -> str:
     return os.getenv(name, default).strip() or default
 
 
+def running_in_docker() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+def default_ollama_base_url() -> str:
+    # Inside Docker, 127.0.0.1 points at the container itself, not the host machine
+    # where Ollama is typically running during local development.
+    return "http://host.docker.internal:11434" if running_in_docker() else "http://127.0.0.1:11434"
+
+
 load_env_file()
 
-OLLAMA_BASE_URL = env_str("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+OLLAMA_BASE_URL = env_str("OLLAMA_BASE_URL", default_ollama_base_url())
 OLLAMA_SMALL_MODEL = env_str("OLLAMA_SMALL_MODEL", "gemma3:270m")
 OLLAMA_LARGE_MODEL = env_str("OLLAMA_LARGE_MODEL", "gemma3:4b")
 OLLAMA_CONTEXT_WINDOW = env_int("OLLAMA_CONTEXT_WINDOW", 2048)
