@@ -17,6 +17,8 @@ Compliance training platform with a React shell, an embedded Phaser office missi
 - Isometric Phaser environments with keyboard movement, walking characters, ambient music and consequence feedback
 - Server-authoritative game decisions with PostgreSQL-backed scores, learning history and XP
 - Validated scenario contracts that can safely accept reviewed AI-generated content later
+- Project-specific onboarding sourced from multiple local folders, GitHub repositories, and Confluence Cloud page sets
+- Manager-controlled project source sync, draft generation, review, publishing and assignment
 
 ## Project structure
 
@@ -27,6 +29,40 @@ Compliance training platform with a React shell, an embedded Phaser office missi
 - `backend/app/llm_setup.py`: provider-neutral LLM adapter, currently configured for Ollama
 - `game-poc/`: standalone Phaser experimentation sandbox
 - PostgreSQL is now the persistence layer
+
+## Project-specific onboarding POC
+
+The `/projects` workspace adds project-specific learning after standard compliance training. Its
+explicit connector registry supports approved local directories, read-only GitHub repositories,
+and read-only Confluence Cloud pages. A project can combine multiple named resources of each type.
+All connectors normalize content into the same source contract, so the downstream course and evaluation
+engine remains source-independent.
+
+The default POC source is:
+
+```text
+~/inovaare_1/revamped_KB/docs
+```
+
+Override it with `PROJECT_DOCS_ROOT`. A manager can sync the source, generate a traceable draft,
+review and publish it, then assign it to employees. Employees must have at least one completed
+standard training activity before starting project learning. Project scores are recorded in the
+learning history without changing standard compliance-topic scores.
+
+The lifecycle is:
+
+```text
+local/GitHub/Confluence resources -> aggregate sync + revision/hash manifest -> draft course -> manager publish -> assignment -> assessment
+```
+
+Private repositories use a read-only fine-grained token from an environment variable beginning
+with `GITHUB_` or `PROJECT_GITHUB_`. Only the variable name is saved; token values are never stored.
+Confluence Cloud uses an Atlassian account email plus an API-token environment variable beginning
+with `CONFLUENCE_` or `PROJECT_CONFLUENCE_`, and likewise stores only the variable name.
+
+The UI is available at `http://127.0.0.1:8000/projects`; APIs are under `/api/projects`.
+See `docs/project-onboarding-poc.md` for the connector contract, endpoints, persistence model and
+test strategy.
 
 ## Backend setup
 

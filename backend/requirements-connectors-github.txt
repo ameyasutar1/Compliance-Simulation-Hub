@@ -1,0 +1,2 @@
+# Optional runtime dependency for the read-only GitHub document connector.
+httpx==0.28.1

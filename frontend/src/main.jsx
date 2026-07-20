@@ -36,12 +36,14 @@ import {
   X,
 } from 'lucide-react';
 import { api } from './api';
+import ProjectsPage from './projects/ProjectsPage';
 import './styles.css';
 
 const GameMissionHub = lazy(() => import('./game/GameMissionHub'));
 
 const PRIMARY_NAV = [
   ['My Training', GraduationCap],
+  ['Projects', BriefcaseBusiness],
   ['Scenario Library', Gamepad2],
   ['My Learning', BarChart3],
   ['Policy Coach', Brain],
@@ -55,6 +57,7 @@ const SUPPORT_NAV = [
 
 const PAGE_INFO = {
   'My Training': ['My Training', 'Complete the interactive compliance training assigned to your role.'],
+  Projects: ['Projects', 'Create and complete learning grounded in real project sources.'],
   'Mission Hub': ['Training Level', 'Explore the environment, meet characters, and complete your assigned compliance mission.'],
   'Daily Challenge': ['Daily Drill', 'Complete a short deterministic drill that reinforces today’s focus area.'],
   'Legacy Scenarios': ['Legacy Scenarios', 'Replay the seeded branching scenarios that remain available as support training.'],
@@ -94,7 +97,7 @@ const AI_DIFFICULTIES = [
 ];
 
 function App() {
-  const [page, setPage] = useState('My Training');
+  const [page, setPage] = useState(() => window.location.pathname === '/projects' ? 'Projects' : 'My Training');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
@@ -103,6 +106,12 @@ function App() {
   const [deepLink, setDeepLink] = useState(null);
   const [aiStatus, setAiStatus] = useState(null);
   const [selectedGameId, setSelectedGameId] = useState(null);
+
+  useEffect(() => {
+    const handlePopState = () => setPage(window.location.pathname === '/projects' ? 'Projects' : 'My Training');
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +174,10 @@ function App() {
   }, [user, refreshKey]);
 
   const navigate = (nextPage) => {
+    const nextPath = nextPage === 'Projects' ? '/projects' : '/';
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ page: nextPage }, '', nextPath);
+    }
     startTransition(() => {
       setPage(nextPage);
       setMobileOpen(false);
@@ -175,7 +188,7 @@ function App() {
     const response = await api.login(userId);
     window.localStorage.setItem('compliance-user-id', userId);
     setUser(response.user);
-    setPage('My Training');
+    setPage(window.location.pathname === '/projects' ? 'Projects' : 'My Training');
     setToast(`Signed in as ${response.user.name}`);
   };
 
@@ -261,6 +274,9 @@ function App() {
         <section className="content">
           {page === 'My Training' && (
             <TrainingHomePage key={`training-${refreshKey}`} user={user} onLaunch={handleLaunch} />
+          )}
+          {page === 'Projects' && (
+            <ProjectsPage user={user} onNotify={setToast} />
           )}
           {page === 'Mission Hub' && (
             <Suspense fallback={<LoadingCard label="Loading interactive mission hub" />}>
@@ -448,7 +464,7 @@ function Sidebar({ mobileOpen, onClose, onNavigate, onLogout, page, user, aiStat
       <div className="nav">
         <div className="nav-label">WORKSPACE</div>
         {PRIMARY_NAV.map(([label, Icon]) => (
-          <button key={label} className={page === label ? 'active' : ''} onClick={() => onNavigate(label)}>
+          <button key={label} data-testid={label === 'Projects' ? 'projects-nav' : undefined} className={page === label ? 'active' : ''} onClick={() => onNavigate(label)}>
             <Icon size={18} />
             <span>{label}</span>
           </button>

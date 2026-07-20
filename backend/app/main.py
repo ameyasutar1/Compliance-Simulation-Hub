@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from statistics import mean
@@ -39,12 +40,21 @@ from .db import (
     update_settings,
 )
 from .game_scenarios import get_game_mission, list_game_missions
+from .project_api import connector_router, router as project_router
 from .seed_data import load_catalog
 
 
 catalog = load_catalog()
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-app = FastAPI(title="Compliance Simulation Platform API", version="1.0.0")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Compliance Simulation Platform API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,6 +62,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(project_router)
+app.include_router(connector_router)
 
 
 class LoginRequest(BaseModel):
@@ -137,11 +149,6 @@ class CoachChatRequest(BaseModel):
     userId: str
     message: str
     history: list[dict] = Field(default_factory=list)
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
 
 
 def require_user(user_id: str) -> dict:

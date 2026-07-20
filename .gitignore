@@ -12,6 +12,8 @@ node_modules/
 frontend/node_modules/
 dist/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 
 # Backend
 backend/.venv/
